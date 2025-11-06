@@ -22,11 +22,23 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 ### Extract Text and Analyze (Full Analysis)
 **Endpoint:** `POST /extract_text_and_analyze`
 
-**Request:**
+**Input Methods:**
+
+**Method 1 - Base64 (Good for small files):**
 ```json
 {
   "image_data": "data:image/jpeg;base64,/9j4AAQSkZJRgABA...",
   "output_format": "json",
+  "include_character_metrics": true,
+  "include_layout_analysis": true
+}
+```
+
+**Method 2 - Cloudflare R2 Upload (Good for large files/PDFs):**
+```json
+{
+  "file_name": "document.pdf",
+  "output_format": "json", 
   "include_character_metrics": true,
   "include_layout_analysis": true
 }
@@ -59,10 +71,19 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 ### Simple Text Extraction
 **Endpoint:** `POST /extract_text_simple`
 
-**Request:**
+**Input Methods:**
+
+**Method 1 - Base64:**
 ```json
 {
   "image_data": "data:image/jpeg;base64,/9j4AAQSkZJRgABA..."
+}
+```
+
+**Method 2 - Cloudflare R2 Upload:**
+```json
+{
+  "file_name": "document.pdf"
 }
 ```
 
