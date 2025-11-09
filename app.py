@@ -29,7 +29,7 @@ uploads_bucket = beam.CloudBucket(
     config=beam.CloudBucketConfig(
         access_key="BEAM_S3_KEY", 
         secret_key="BEAM_S3_SECRET",
-        endpoint="https://BEAM_R2_ACCOUNT_ID.r2.cloudflarestorage.com",  # Hardcoded for testing
+        endpoint="https://50e1f4714be505bee485af31b51492f1.r2.cloudflarestorage.com",
         region="auto"  # R2 uses "auto" region
     )
 )
@@ -143,7 +143,7 @@ def save_pil_image_to_r2(image_obj, folder_name: str, path_context: str) -> Dict
         filename = f"{timestamp}_{image_id}.png"
         
         # Create the full path in the mounted volume
-        output_dir = f"./protocols/output/paddleocr/{folder_name}"
+        output_dir = f"{mount_path}/images/{folder_name}"
         os.makedirs(output_dir, exist_ok=True)
         full_path = f"{output_dir}/{filename}"
         
@@ -156,7 +156,7 @@ def save_pil_image_to_r2(image_obj, folder_name: str, path_context: str) -> Dict
         size_info = f"{width}x{height}"
         
         # The path that will be accessible via R2
-        r2_path = f"output/paddleocr/{folder_name}/{filename}"
+        r2_path = f"images/{folder_name}/{filename}"
         
         print(f"Saved PIL Image to mounted volume: {full_path} -> {r2_path}")
         
@@ -195,6 +195,10 @@ def prepare_input_file(image_data: Optional[str] = None, file_name: Optional[str
     Raises:
         ValueError: If neither or both parameters are provided
     """
+    print("Current directory:", os.getcwd())
+    print("Files in mount_path:", os.listdir(mount_path))
+    print("Files in /volumes/protocols:", os.listdir("/volumes/protocols"))
+    
     if not image_data and not file_name:
         raise ValueError("Either image_data or file_name must be provided")
     
@@ -215,7 +219,7 @@ def prepare_input_file(image_data: Optional[str] = None, file_name: Optional[str
     
     elif file_name:
         # Handle S3 file upload (new method)
-        file_path = os.path.join("./protocols", file_name)
+        file_path = os.path.join(mount_path, file_name)
         
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found in uploads: {file_name}")
@@ -229,7 +233,8 @@ def prepare_input_file(image_data: Optional[str] = None, file_name: Optional[str
     cpu=2,
     memory="8Gi",
     volumes=[model_cache, uploads_bucket],
-    name="paddleocr-vl-extract"
+    name="paddleocr-vl-extract",
+    timeout=600
 )
 def extract_text_and_analyze(
     image_data: Optional[str] = None,
