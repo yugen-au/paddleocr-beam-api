@@ -120,16 +120,23 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 
 ### Deploy to Beam
 
-Use the cross-platform `deploy.py` (stdlib only — run with the system Python). It
-sets the deploy-time env (resource profile + non-secret R2 config) and invokes
-`beam deploy`, so you don't deal with bash-vs-PowerShell env syntax.
+First set up the local env with [uv](https://docs.astral.sh/uv/):
 
 ```bash
-python deploy.py prod                      # both endpoints, cost profile (RTX4090)
-python deploy.py staging                    # staging bucket (edit ENVIRONMENTS first)
-python deploy.py prod --profile latency     # H100, fastest per-request
-python deploy.py prod --endpoint analyze    # just one endpoint
-python deploy.py staging --dry-run          # print actions, deploy nothing
+uv sync              # full dev env (.venv): beam-client + paddleocr stubs + pytest/ruff
+uv sync --no-dev     # deploy-only env (just beam-client)
+```
+
+Then deploy with the cross-platform `deploy.py` (it sets the deploy-time env —
+resource profile + non-secret R2 config — and invokes `beam deploy`, so you avoid
+bash-vs-PowerShell env syntax):
+
+```bash
+uv run python deploy.py prod                   # both endpoints, cost profile (RTX4090)
+uv run python deploy.py staging                # staging bucket (edit ENVIRONMENTS first)
+uv run python deploy.py prod --profile latency # H100, fastest per-request
+uv run python deploy.py prod --endpoint analyze# just one endpoint
+uv run python deploy.py staging --dry-run      # print actions, deploy nothing
 ```
 
 Per-environment config (bucket, endpoint, profile, secret *names*) lives in
