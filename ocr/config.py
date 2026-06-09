@@ -9,6 +9,19 @@ import os
 # R2 uploads bucket mount (see ocr.resources)
 MOUNT_PATH = "./protocols"
 
+# --- R2 / S3 storage (deploy-time; set in the shell running `beam deploy`) ----
+# Switch prod <-> staging by overriding these. R2 endpoint is per-account (holds
+# the account id), so a same-account staging bucket only needs R2_BUCKET changed.
+# access/secret values are Beam *secret names*, not the raw keys.
+R2_BUCKET = os.environ.get("R2_BUCKET", "protocols")
+R2_ENDPOINT = os.environ.get(
+    "R2_ENDPOINT",
+    "https://50e1f4714be505bee485af31b51492f1.r2.cloudflarestorage.com",
+)
+R2_REGION = os.environ.get("R2_REGION", "auto")
+R2_ACCESS_KEY_SECRET = os.environ.get("R2_ACCESS_KEY_SECRET", "BEAM_S3_KEY")
+R2_SECRET_KEY_SECRET = os.environ.get("R2_SECRET_KEY_SECRET", "BEAM_S3_SECRET")
+
 # --- FastDeploy VLM server (sidecar) -----------------------------------------
 # The 0.9B vision-language model is served as a separate OpenAI-compatible HTTP
 # process; the pipeline (layout/orientation/unwarp) stays in-process and calls it.

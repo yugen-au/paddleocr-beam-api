@@ -1,7 +1,14 @@
 """Beam infrastructure objects: image, persistent volumes, R2 bucket."""
 import beam
 
-from ocr.config import MOUNT_PATH
+from ocr.config import (
+    MOUNT_PATH,
+    R2_ACCESS_KEY_SECRET,
+    R2_BUCKET,
+    R2_ENDPOINT,
+    R2_REGION,
+    R2_SECRET_KEY_SECRET,
+)
 
 # Official PaddleOCR-VL image; float paddleocr/paddlepaddle + add FastDeploy backend.
 image = (
@@ -31,14 +38,15 @@ hf_cache = beam.Volume(
 )
 
 # Cloudflare R2 (S3-compatible). access_key/secret_key are Beam secret *names*.
+# All values env-driven (ocr.config) so prod <-> staging is a deploy-time switch.
 uploads_bucket = beam.CloudBucket(
-    name="protocols",  # must match the actual R2 bucket name
+    name=R2_BUCKET,
     mount_path=MOUNT_PATH,
     config=beam.CloudBucketConfig(
-        access_key="BEAM_S3_KEY",
-        secret_key="BEAM_S3_SECRET",
-        endpoint="https://50e1f4714be505bee485af31b51492f1.r2.cloudflarestorage.com",
-        region="auto",
+        access_key=R2_ACCESS_KEY_SECRET,
+        secret_key=R2_SECRET_KEY_SECRET,
+        endpoint=R2_ENDPOINT,
+        region=R2_REGION,
     ),
 )
 
