@@ -44,6 +44,7 @@ def prepare_input_file(
             return tmp_file.name
 
     # R2 file upload: read from the mounted bucket.
+    assert file_name is not None  # guaranteed by the validation above
     file_path = os.path.join(MOUNT_PATH, file_name)
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found in uploads: {file_name}")

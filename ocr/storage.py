@@ -3,7 +3,7 @@ R2 bucket, and replace them with URL-reference dicts."""
 import os
 import uuid
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ocr.config import MOUNT_PATH
 
@@ -64,7 +64,7 @@ def save_pil_image_to_r2(image_obj, folder_name: str, path_context: str) -> Dict
         }
 
 
-def save_images_to_r2(data, session_id: str = None, original_filename: str = None) -> Any:
+def save_images_to_r2(data, session_id: Optional[str] = None, original_filename: Optional[str] = None) -> Any:
     """Recursively replace PIL Images in `data` with R2 URL references."""
     if session_id is None:
         session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4())[:8]

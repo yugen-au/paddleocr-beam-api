@@ -28,7 +28,8 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
 - Deploy via `uv run python deploy.py <prod|staging>` (cross-platform; sets env + runs `beam deploy`).
   - `deploy.py` is the single source of env-var VALUES: `SHARED` (VLM knobs) + `ENVIRONMENTS` (per-env: profile + R2).
   - `config.py` has NO defaults — reads `os.environ[...]` required; raises a pointed error if unset. Not importable standalone (tests must set env). Raw `beam deploy app.py:...` no longer works.
-  - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env_vars=RUNTIME_ENV)` — required for `VLM_*` to actually take effect at runtime (`boot()` runs in-container).
+  - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env=RUNTIME_ENV)` (param is `env`, a Dict[str,str] — NOT `env_vars`) — required for `VLM_*` to take effect at runtime (`boot()` runs in-container).
+  - Cold-start mitigation: `@endpoint` has `keep_warm_seconds` (default 180); bump for the spiky `latency` profile.
 - Resource profiles via `BEAM_PROFILE` (cost=RTX4090 / latency=H100), resolved at deploy time.
 - R2 bucket mounted at `MOUNT_PATH` (`./protocols`, a local dir); uploads read from mount, output images -> `images/<name>_<session>/`.
 - Secrets via Beam secret names: `BEAM_S3_KEY`, `BEAM_S3_SECRET`.

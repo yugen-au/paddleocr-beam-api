@@ -22,7 +22,7 @@ def _session_id() -> str:
 @beam.endpoint(
     image=image,
     on_start=boot,
-    env_vars=RUNTIME_ENV,
+    env=RUNTIME_ENV,
     gpu=PROFILE["gpu"],
     cpu=PROFILE["cpu"],
     memory=PROFILE["memory"],
@@ -112,7 +112,7 @@ def extract_text_and_analyze(
 @beam.endpoint(
     image=image,
     on_start=boot,
-    env_vars=RUNTIME_ENV,
+    env=RUNTIME_ENV,
     gpu=PROFILE["gpu"],
     cpu=PROFILE["cpu"],
     memory=PROFILE["memory"],

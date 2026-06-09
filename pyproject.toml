@@ -20,6 +20,7 @@ dev = [
     # paddlepaddle-gpu (no Windows wheel) and fastdeploy (CLI-launched, never
     # imported) are intentionally absent; the container builds those itself.
     "paddleocr[doc-parser]",
+    "pyright>=1.1.410",
     "pytest",
     "ruff",
 ]
