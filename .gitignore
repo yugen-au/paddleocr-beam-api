@@ -29,3 +29,18 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Project specific
+.claude/settings.local.json
+.serena/
+logs/
