@@ -15,7 +15,12 @@ image = (
         base_image="ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl:latest"
     )
     .add_commands([
-        "pip install paddlepaddle-gpu==3.2.1 -i https://www.paddlepaddle.org.cn/packages/stable/cu126/"
+        # cache-bust: bump this string to force Beam to rebuild and pull latest versions
+        'echo "build: 2026-06-09"',
+        # float: floor-pin paddlepaddle (CUDA 12.6 index), float paddleocr to newest.
+        # paddleocr's default pipeline_version follows the installed pkg (v1.6 now, v1.7+ later).
+        'pip install -U "paddlepaddle-gpu>=3.2.1" -i https://www.paddlepaddle.org.cn/packages/stable/cu126/',
+        'pip install -U "paddleocr[doc-parser]"',
     ])
 )
 
