@@ -9,6 +9,17 @@ from typing import Dict, Any, Optional
 
 mount_path = "./protocols"
 
+# Deploy-time resource profile. GPU/CPU/memory are resolved when `beam deploy`
+# imports this module, so set BEAM_PROFILE in the shell running the deploy
+# (NOT a runtime/container env var — GPU is provisioned before the container starts).
+#   BEAM_PROFILE=cost     beam deploy app.py:extract_text_and_analyze   # cheap $/page
+#   BEAM_PROFILE=latency  beam deploy app.py:extract_text_and_analyze   # fast per-request
+PROFILES = {
+    "cost":    {"gpu": "RTX4090", "cpu": 4, "memory": "16Gi"},
+    "latency": {"gpu": "H100",    "cpu": 8, "memory": "32Gi"},
+}
+PROFILE = PROFILES[os.environ.get("BEAM_PROFILE", "cost")]
+
 # Use the official PaddleOCR-VL Docker image and add PaddlePaddle with model caching
 image = (
     beam.Image(
@@ -234,9 +245,9 @@ def prepare_input_file(image_data: Optional[str] = None, file_name: Optional[str
 
 @beam.endpoint(
     image=image,
-    gpu="RTX4090",
-    cpu=2,
-    memory="8Gi",
+    gpu=PROFILE["gpu"],
+    cpu=PROFILE["cpu"],
+    memory=PROFILE["memory"],
     volumes=[model_cache, uploads_bucket],
     name="paddleocr-vl-extract",
     timeout=600
@@ -346,9 +357,9 @@ def extract_text_and_analyze(
 
 @beam.endpoint(
     image=image,
-    gpu="RTX4090", 
-    cpu=2,
-    memory="4Gi",
+    gpu=PROFILE["gpu"],
+    cpu=PROFILE["cpu"],
+    memory=PROFILE["memory"],
     volumes=[model_cache, uploads_bucket],
     name="paddleocr-vl-simple"
 )
