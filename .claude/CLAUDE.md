@@ -29,7 +29,7 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
   - `config.py` has NO defaults — reads `os.environ[...]` required; raises a pointed error if unset. Not importable standalone (tests must set env). Raw `beam deploy app.py:...` no longer works.
   - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env_vars=RUNTIME_ENV)` — required for `VLM_*` to actually take effect at runtime (`boot()` runs in-container).
 - Resource profiles via `BEAM_PROFILE` (cost=RTX4090 / latency=H100), resolved at deploy time.
-- R2 bucket mounted at `./protocols`; uploads read from mount, output images -> `images/<name>_<session>/`.
+- R2 bucket mounted at `MOUNT_PATH` (`./protocols`, a local dir); uploads read from mount, output images -> `images/<name>_<session>/`.
 - Secrets via Beam secret names: `BEAM_S3_KEY`, `BEAM_S3_SECRET`.
 
 ## Open / verify-on-deploy
@@ -48,7 +48,7 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
 - Deploy: `beam deploy app.py:extract_text_and_analyze` (or `:extract_text_simple`)
 - Local serve: `beam serve app.py:extract_text_and_analyze`
 - Full-analysis endpoint timeout: 600s. Simple endpoint: default.
-- R2 bucket name `protocols` must match actual bucket; endpoint `r2.cloudflarestorage.com`.
+- R2 bucket/endpoint env-driven via deploy.py: prod `yugen-assets`, staging `yugen-assets-staging` (same Cloudflare account + creds, differ by bucket).
 - No requirements.txt — deps declared in `beam.Image` build commands.
 
 ## Testing

@@ -34,18 +34,16 @@ SHARED = {
 ENVIRONMENTS = {
     "prod": {
         "BEAM_PROFILE": "cost",
-        "R2_BUCKET": "protocols",
-        "R2_ENDPOINT": "https://50e1f4714be505bee485af31b51492f1.r2.cloudflarestorage.com",
+        "R2_BUCKET": "yugen-assets",
+        "R2_ENDPOINT": "https://9d7bee7c1c5f0c0206e497f750384ae3.r2.cloudflarestorage.com",
         "R2_ACCESS_KEY_SECRET": "BEAM_S3_KEY",
         "R2_SECRET_KEY_SECRET": "BEAM_S3_SECRET",
     },
+    # Mirrors prod (same Cloudflare account + creds); only the bucket differs.
     "staging": {
         "BEAM_PROFILE": "cost",
-        "R2_BUCKET": "REPLACE_ME_staging_bucket",
-        # Same Cloudflare account -> same endpoint. Different account -> change this.
-        "R2_ENDPOINT": "https://50e1f4714be505bee485af31b51492f1.r2.cloudflarestorage.com",
-        # Same creds as prod -> leave as-is. Different creds -> create new Beam
-        # secrets and point these at their names.
+        "R2_BUCKET": "yugen-assets-staging",
+        "R2_ENDPOINT": "https://9d7bee7c1c5f0c0206e497f750384ae3.r2.cloudflarestorage.com",
         "R2_ACCESS_KEY_SECRET": "BEAM_S3_KEY",
         "R2_SECRET_KEY_SECRET": "BEAM_S3_SECRET",
     },
