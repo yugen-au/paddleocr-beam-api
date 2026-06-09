@@ -7,6 +7,7 @@
 .venv
 venv
 beam-env
+logs/
 __pycache__
 .DS_Store
 .config
