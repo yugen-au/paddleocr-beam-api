@@ -119,23 +119,23 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 - Beam account with API token
 
 ### Deploy to Beam
-```bash
-# Clone the repository
-git clone https://github.com/yugen-au/paddleocr-beam-api.git
-cd paddleocr-beam-api
 
-# Deploy the endpoint. BEAM_PROFILE selects the GPU/CPU/memory at deploy time
-# (must be set in the deploy shell — GPU is provisioned before the container starts).
-BEAM_PROFILE=cost    beam deploy app.py:extract_text_and_analyze   # RTX4090, cheapest $/page
-BEAM_PROFILE=latency beam deploy app.py:extract_text_and_analyze   # H100, fastest per-request
+Use the cross-platform `deploy.py` (stdlib only — run with the system Python). It
+sets the deploy-time env (resource profile + non-secret R2 config) and invokes
+`beam deploy`, so you don't deal with bash-vs-PowerShell env syntax.
+
+```bash
+python deploy.py prod                      # both endpoints, cost profile (RTX4090)
+python deploy.py staging                    # staging bucket (edit ENVIRONMENTS first)
+python deploy.py prod --profile latency     # H100, fastest per-request
+python deploy.py prod --endpoint analyze    # just one endpoint
+python deploy.py staging --dry-run          # print actions, deploy nothing
 ```
 
-Defaults to `cost` if `BEAM_PROFILE` is unset. Profiles are defined in `ocr/config.py`.
-
-### Alternative: Deploy Simple Extraction
-```bash
-beam deploy app.py:extract_text_simple
-```
+Per-environment config (bucket, endpoint, profile, secret *names*) lives in
+`ENVIRONMENTS` at the top of `deploy.py`. Resource profiles are in `ocr/config.py`.
+Actual R2 credentials are stored in Beam's secret manager, not here (see
+[Configuration](#configuration)).
 
 ## Local Development
 
