@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import beam
 
-from ocr.config import PROFILE
+from ocr.config import PROFILE, RUNTIME_ENV
 from ocr.io import prepare_input_file
 from ocr.metrics import calculate_character_metrics
 from ocr.pipeline import boot
@@ -22,6 +22,7 @@ def _session_id() -> str:
 @beam.endpoint(
     image=image,
     on_start=boot,
+    env_vars=RUNTIME_ENV,
     gpu=PROFILE["gpu"],
     cpu=PROFILE["cpu"],
     memory=PROFILE["memory"],
@@ -111,6 +112,7 @@ def extract_text_and_analyze(
 @beam.endpoint(
     image=image,
     on_start=boot,
+    env_vars=RUNTIME_ENV,
     gpu=PROFILE["gpu"],
     cpu=PROFILE["cpu"],
     memory=PROFILE["memory"],

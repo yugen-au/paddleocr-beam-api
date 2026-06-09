@@ -19,7 +19,18 @@ import os
 import subprocess
 import sys
 
-# Per-environment deploy-time config (non-secret). Edit values here.
+# Same across all environments. These are the VLM tuning knobs; config.py reads
+# them (no defaults there) and they're forwarded into the container at runtime.
+SHARED = {
+    "VLM_PORT": "8118",
+    "VLM_MODEL_NAME": "PaddleOCR-VL-1.6-0.9B",
+    "VLM_GPU_MEM_UTIL": "0.6",        # conservative for 24GB; bump for H100/latency
+    "VLM_MAX_NUM_SEQS": "256",
+    "VLM_MAX_MODEL_LEN": "16384",
+    "VLM_BOOT_TIMEOUT": "240",
+}
+
+# Per-environment config — only what actually differs between prod and staging.
 ENVIRONMENTS = {
     "prod": {
         "BEAM_PROFILE": "cost",
@@ -59,7 +70,7 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Print actions without deploying")
     args = parser.parse_args()
 
-    cfg = dict(ENVIRONMENTS[args.environment])
+    cfg = {**SHARED, **ENVIRONMENTS[args.environment]}
     if args.profile:
         cfg["BEAM_PROFILE"] = args.profile
     targets = args.endpoint or DEFAULT_ENDPOINTS

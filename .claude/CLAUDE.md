@@ -24,6 +24,10 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
 - Base image: official PaddleOCR-VL image; paddleocr/paddlepaddle floated (`-U`), `:latest` tag.
 - Model caches (persistent volumes): `.paddlex/official_models` + HF cache `~/.cache/huggingface`
   (HF cache is required so the genai server doesn't re-download VLM weights every cold start).
+- Deploy via `python deploy.py <prod|staging>` (cross-platform; sets env + runs `beam deploy`).
+  - `deploy.py` is the single source of env-var VALUES: `SHARED` (VLM knobs) + `ENVIRONMENTS` (per-env: profile + R2).
+  - `config.py` has NO defaults — reads `os.environ[...]` required; raises a pointed error if unset. Not importable standalone (tests must set env). Raw `beam deploy app.py:...` no longer works.
+  - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env_vars=RUNTIME_ENV)` — required for `VLM_*` to actually take effect at runtime (`boot()` runs in-container).
 - Resource profiles via `BEAM_PROFILE` (cost=RTX4090 / latency=H100), resolved at deploy time.
 - R2 bucket mounted at `./protocols`; uploads read from mount, output images -> `images/<name>_<session>/`.
 - Secrets via Beam secret names: `BEAM_S3_KEY`, `BEAM_S3_SECRET`.
