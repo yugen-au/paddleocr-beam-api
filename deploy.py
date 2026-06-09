@@ -77,6 +77,7 @@ def main() -> None:
     cfg = {**SHARED, **ENVIRONMENTS[args.environment]}
     if args.profile:
         cfg["BEAM_PROFILE"] = args.profile
+    cfg["BEAM_DEPLOY_ENV"] = args.environment  # suffixes the deployment name (prod/staging separation)
     targets = args.endpoint or DEFAULT_ENDPOINTS
 
     if "REPLACE_ME" in cfg["R2_BUCKET"]:

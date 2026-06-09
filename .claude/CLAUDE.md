@@ -25,7 +25,8 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
 - Model caches (persistent volumes): `.paddlex/official_models` + HF cache `~/.cache/huggingface`
   (HF cache is required so the genai server doesn't re-download VLM weights every cold start).
 - Local env via uv: `uv sync` (dev: beam-client + paddleocr stubs + pytest/ruff) or `uv sync --no-dev` (deploy-only). Source of truth: `pyproject.toml` + `uv.lock`. venv is `.venv` (beam-env retired).
-- Deploy via `uv run python deploy.py <prod|staging>` (cross-platform; sets env + runs `beam deploy`).
+- Deploy via `uv run python deploy.py <prod|staging>` (cross-platform; sets env + runs `beam -c yugen-au deploy`).
+- Beam is one-workspace-per-account (no multi-workspace), so prod/staging share the `yugen-au` workspace and are separated by **deployment name suffix**: `BEAM_DEPLOY_ENV` → `paddleocr-vl-{extract,simple}-{prod,staging}`. They use the same R2 creds; only the bucket differs (yugen-assets vs -staging).
   - `deploy.py` is the single source of env-var VALUES: `SHARED` (VLM knobs) + `ENVIRONMENTS` (per-env: profile + R2).
   - `config.py` has NO defaults — reads `os.environ[...]` required; raises a pointed error if unset. Not importable standalone (tests must set env). Raw `beam deploy app.py:...` no longer works.
   - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env=RUNTIME_ENV)` (param is `env`, a Dict[str,str] — NOT `env_vars`) — required for `VLM_*` to take effect at runtime (`boot()` runs in-container).

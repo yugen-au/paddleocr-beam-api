@@ -22,6 +22,7 @@ R2_REGION = "auto"                   # R2 is always "auto"
 # --- Required env vars (values defined in deploy.py) -------------------------
 REQUIRED_VARS = (
     "BEAM_PROFILE",
+    "BEAM_DEPLOY_ENV",
     "VLM_PORT",
     "VLM_MODEL_NAME",
     "VLM_GPU_MEM_UTIL",
@@ -53,6 +54,10 @@ PROFILES = {
 PROFILE_NAME = os.environ["BEAM_PROFILE"]
 PROFILE = PROFILES[PROFILE_NAME]
 GPU_SUPPORTS_FA3 = PROFILE["gpu"] in {"H100", "H200", "B200"}
+
+# Environment name (prod/staging) — suffixes the deployment names so each env is a
+# distinct Beam deployment in the same workspace.
+DEPLOY_ENV = os.environ["BEAM_DEPLOY_ENV"]
 
 # FastDeploy VLM server (sidecar).
 VLM_PORT = int(os.environ["VLM_PORT"])

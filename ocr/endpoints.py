@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 
 import beam
 
-from ocr.config import PROFILE, RUNTIME_ENV
+from ocr.config import DEPLOY_ENV, PROFILE, RUNTIME_ENV
 from ocr.io import prepare_input_file
 from ocr.metrics import calculate_character_metrics
 from ocr.pipeline import boot
@@ -27,7 +27,7 @@ def _session_id() -> str:
     cpu=PROFILE["cpu"],
     memory=PROFILE["memory"],
     volumes=VOLUMES,
-    name="paddleocr-vl-extract",
+    name=f"paddleocr-vl-extract-{DEPLOY_ENV}",
     timeout=600,
 )
 def extract_text_and_analyze(
@@ -117,7 +117,7 @@ def extract_text_and_analyze(
     cpu=PROFILE["cpu"],
     memory=PROFILE["memory"],
     volumes=VOLUMES,
-    name="paddleocr-vl-simple",
+    name=f"paddleocr-vl-simple-{DEPLOY_ENV}",
 )
 def extract_text_simple(
     context,
