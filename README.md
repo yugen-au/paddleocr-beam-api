@@ -13,9 +13,23 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 ## Architecture
 
 - **Base**: Official PaddleOCR-VL Docker image
-- **Framework**: PaddlePaddle GPU with CUDA 12.6
-- **Deployment**: Beam.cloud with auto-scaling
-- **GPU**: RTX 4090 for cost-effective processing
+- **Framework**: PaddlePaddle GPU with CUDA 12.6 (paddleocr floated to latest)
+- **Inference**: FastDeploy accelerated backend — the 0.9B VLM runs as a sidecar
+  OpenAI-compatible server (`127.0.0.1:8118`); the pipeline delegates only the VLM
+  recognition stage to it over HTTP, keeping layout/orientation/unwarp in-process
+- **Deployment**: Beam.cloud with auto-scaling; sidecar started once per container via `on_start`
+- **GPU**: selectable per deploy via `BEAM_PROFILE` (cost=RTX4090 / latency=H100)
+
+### Code layout (`ocr/` package)
+| Module | Responsibility |
+|---|---|
+| `config.py` | Resource profile, VLM server + tuning constants |
+| `resources.py` | Beam image (FastDeploy deps), model/HF volumes, R2 bucket |
+| `vlm_server.py` | Launch FastDeploy sidecar subprocess, poll until healthy |
+| `pipeline.py` | `boot()` (Beam `on_start`): start sidecar + build pipeline client |
+| `storage.py` / `io.py` / `metrics.py` | R2 image saving / input prep / char metrics |
+| `endpoints.py` | The two `@beam.endpoint` functions |
+| `app.py` | Thin re-export so `beam deploy app.py:<fn>` is unchanged |
 
 ## API Endpoints
 
@@ -110,9 +124,13 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 git clone https://github.com/yugen-au/paddleocr-beam-api.git
 cd paddleocr-beam-api
 
-# Deploy the endpoint
-beam deploy app.py:extract_text_and_analyze
+# Deploy the endpoint. BEAM_PROFILE selects the GPU/CPU/memory at deploy time
+# (must be set in the deploy shell — GPU is provisioned before the container starts).
+BEAM_PROFILE=cost    beam deploy app.py:extract_text_and_analyze   # RTX4090, cheapest $/page
+BEAM_PROFILE=latency beam deploy app.py:extract_text_and_analyze   # H100, fastest per-request
 ```
+
+Defaults to `cost` if `BEAM_PROFILE` is unset. Profiles are defined in `ocr/config.py`.
 
 ### Alternative: Deploy Simple Extraction
 ```bash
