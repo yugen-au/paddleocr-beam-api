@@ -56,6 +56,11 @@ ENDPOINTS = {
 }
 DEFAULT_ENDPOINTS = ["analyze", "simple"]
 
+# Beam workspace (context) to deploy into. Separate axis from the R2 config above:
+# this is WHERE the endpoint runs/bills, not which bucket it uses. Passed via
+# `beam -c <ctx>` so deploys don't depend on the globally-selected default context.
+BEAM_CONTEXT = "yugen-au"
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Deploy PaddleOCR-VL endpoints to Beam.")
@@ -65,6 +70,7 @@ def main() -> None:
         help="Endpoint(s) to deploy. Repeatable. Default: " + ", ".join(DEFAULT_ENDPOINTS),
     )
     parser.add_argument("--profile", choices=["cost", "latency"], help="Override BEAM_PROFILE")
+    parser.add_argument("--context", default=BEAM_CONTEXT, help=f"Beam context/workspace (default: {BEAM_CONTEXT})")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without deploying")
     args = parser.parse_args()
 
@@ -81,6 +87,7 @@ def main() -> None:
 
     env = {**os.environ, **cfg}
 
+    print(f"Context     : {args.context}")
     print(f"Environment : {args.environment}")
     for k, v in cfg.items():
         print(f"  {k} = {v}")
@@ -89,14 +96,14 @@ def main() -> None:
     if args.dry_run:
         print("\n[dry-run] would run:")
         for t in targets:
-            print(f"  beam deploy {ENDPOINTS[t]}")
+            print(f"  beam -c {args.context} deploy {ENDPOINTS[t]}")
         return
 
     for t in targets:
         ref = ENDPOINTS[t]
-        print(f"\n>>> beam deploy {ref}")
+        print(f"\n>>> beam -c {args.context} deploy {ref}")
         try:
-            result = subprocess.run(["beam", "deploy", ref], env=env)
+            result = subprocess.run(["beam", "-c", args.context, "deploy", ref], env=env)
         except FileNotFoundError:
             sys.exit("`beam` CLI not found on PATH. Install/activate it and retry.")
         if result.returncode != 0:
