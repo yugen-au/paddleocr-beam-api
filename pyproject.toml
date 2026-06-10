@@ -8,7 +8,7 @@ requires-python = ">=3.11"
 # Container RUNTIME deps (paddlepaddle-gpu, paddleocr[doc-parser], fastdeploy)
 # are NOT here — they're built into the beam.Image in ocr/resources.py.
 dependencies = [
-    "beam-client==0.2.191",
+    "modal",
 ]
 
 [dependency-groups]

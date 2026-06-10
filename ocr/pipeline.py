@@ -1,20 +1,19 @@
-"""Pipeline bootstrap. boot() is the Beam on_start hook: it launches the
-FastDeploy sidecar and builds the PaddleOCRVL client that delegates the VLM
-stage to it. Runs once per container; the returned pipeline is read from
-`context.on_start_value` in the endpoint handlers."""
+"""Pipeline bootstrap. Called once per container from the Modal class's
+@modal.enter(): start the FastDeploy sidecar, then build the PaddleOCRVL client
+that runs layout/orientation/unwarp in-process and delegates VLM recognition to
+the sidecar over HTTP."""
 from ocr.config import VLM_BACKEND, VLM_SERVER_URL
 from ocr.vlm_server import start_vlm_server
 
 
 def boot():
-    """Beam on_start: start sidecar VLM server, return ready pipeline client."""
+    """Start sidecar + return a ready PaddleOCRVL pipeline client."""
     start_vlm_server()
 
     from paddleocr import PaddleOCRVL
 
     print("Building PaddleOCRVL pipeline client (FastDeploy server backend)...")
-    # pipeline_version left unset -> follows installed package default (v1.6+).
-    # Layout/orientation/unwarp run in-process; VLM recognition is delegated.
+    # pipeline_version unset -> follows the installed package default (v1.6+).
     pipeline = PaddleOCRVL(
         use_doc_orientation_classify=True,
         use_doc_unwarping=True,

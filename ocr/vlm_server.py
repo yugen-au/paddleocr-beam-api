@@ -1,5 +1,10 @@
-"""FastDeploy VLM server lifecycle: launch as a sidecar subprocess and wait
-until it is healthy. Started once per container from ocr.pipeline.boot()."""
+"""FastDeploy VLM sidecar lifecycle.
+
+The base image has no fastdeploy, and `install_genai_server_deps` imports paddle
+(needs the GPU driver — present at runtime, not at image build), so we install it
+here in boot() rather than in the image. Then launch the server and poll /health.
+The paddleocr/paddlex CLIs are at /usr/local/bin (on PATH) in the vendor image.
+"""
 import os
 import subprocess
 import time
@@ -22,12 +27,16 @@ _server_proc = None
 
 
 def _write_backend_config() -> str:
-    """Write the FastDeploy backend tuning config (paddleocr expects a file path)."""
     with open(_BACKEND_CONFIG_PATH, "w") as f:
         f.write(f"gpu-memory-utilization: {VLM_GPU_MEM_UTIL}\n")
         f.write(f"max-num-seqs: {VLM_MAX_NUM_SEQS}\n")
         f.write(f"max-model-len: {VLM_MAX_MODEL_LEN}\n")
     return _BACKEND_CONFIG_PATH
+
+
+def _install_genai_deps() -> None:
+    print("Installing FastDeploy genai server deps (runtime; needs GPU)...")
+    subprocess.run(["paddleocr", "install_genai_server_deps", "fastdeploy"], check=True)
 
 
 def _wait_for_health() -> None:
@@ -44,19 +53,18 @@ def _wait_for_health() -> None:
                     print("FastDeploy VLM server is healthy.")
                     return
         except (urllib.error.URLError, ConnectionError, OSError):
-            pass  # not up yet
+            pass
         time.sleep(2)
-    raise TimeoutError(
-        f"FastDeploy VLM server not healthy within {VLM_BOOT_TIMEOUT}s"
-    )
+    raise TimeoutError(f"FastDeploy VLM server not healthy within {VLM_BOOT_TIMEOUT}s")
 
 
 def start_vlm_server() -> subprocess.Popen:
-    """Launch the FastDeploy server (idempotent) and block until healthy."""
+    """Install genai deps, launch the FastDeploy server, block until healthy."""
     global _server_proc
     if _server_proc is not None and _server_proc.poll() is None:
         return _server_proc
 
+    _install_genai_deps()
     cfg = _write_backend_config()
     cmd = [
         "paddleocr", "genai_server",
@@ -66,7 +74,6 @@ def start_vlm_server() -> subprocess.Popen:
         "--backend", "fastdeploy",
         "--backend_config", cfg,
     ]
-
     env = os.environ.copy()
     if GPU_SUPPORTS_FA3:
         env["FLAGS_flash_attn_version"] = "3"  # Hopper/Blackwell only

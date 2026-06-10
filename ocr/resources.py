@@ -1,62 +1,51 @@
-"""Beam infrastructure objects: image, persistent volumes, R2 bucket."""
-import beam
+"""Modal infrastructure: App, image, persistent volumes, R2 mount, secret.
+
+The vendor PaddleOCR-VL image runs as ROOT on Modal (validated), using the
+image's own Python 3.10 (which has paddle + paddleocr). FastDeploy is NOT in the
+base image — it's installed at runtime in boot() (needs the GPU, which is only
+attached at runtime, not at build).
+"""
+import modal
 
 from ocr.config import (
     MOUNT_PATH,
-    R2_ACCESS_KEY_SECRET,
     R2_BUCKET,
     R2_ENDPOINT,
-    R2_REGION,
-    R2_SECRET_KEY_SECRET,
+    R2_SECRET_NAME,
 )
 
-# Official PaddleOCR-VL image, PINNED BY DIGEST (not :latest). Floating the base
-# silently broke the build once the vendor image moved to a non-root user; pin it.
-# paddleocr is still floated below (with the cache-bust) for model-version updates.
+app = modal.App("paddleocr-vl")
+
+# Pinned vendor image, run as-is (root, image's python). `pip install -U paddleocr`
+# floats to >=3.6.0 for VL-1.6 (pure-python, safe). `add_local_python_source`
+# ships our `ocr` package into the container.
 image = (
-    beam.Image(
-        base_image="ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl@sha256:e2b525b8fb8ac5711eac667d574dbcf5516a2e6a5437a416357ce64ba1b81a58"
+    modal.Image.from_registry(
+        "ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl@sha256:e2b525b8fb8ac5711eac667d574dbcf5516a2e6a5437a416357ce64ba1b81a58"
     )
-    .add_commands([
-        # cache-bust: bump to force a rebuild + refresh the floating paddleocr below
-        'echo "build: 2026-06-09"',
-        # Do NOT install/upgrade paddlepaddle-gpu: the base image ships it (3.2.1)
-        # wired to its CUDA libs. A user-site `-U` upgrade shadows it and breaks
-        # libnvrtc at import. To move paddle, bump the base image digest instead.
-        # paddleocr is pure-Python (no CUDA libs) so floating it is safe; gets >=3.6.0 for VL-1.6.
-        'pip install -U "paddleocr[doc-parser]"',
-        # FastDeploy accelerated VLM backend (imports the base image's paddle)
-        'paddleocr install_genai_server_deps fastdeploy',
-    ])
+    .run_commands(
+        'pip install -U "paddleocr[doc-parser]"',  # >=3.6.0 for VL-1.6
+        "pip install fastapi",                       # for @modal.asgi_app (no-op if present)
+    )
+    .add_local_python_source("ocr")
 )
-# Use the base image's own Python (3.10, already has paddle) rather than letting Beam
-# bootstrap its own. This skips Beam's apt-based Python install step, which fails under
-# the base image's non-root user. Safe here: our installs are shell BuildSteps
-# (add_commands), not pip BuildSteps, so Beam skips the Python setup entirely.
-image.ignore_python = True
 
 # Persistent caches so cold starts don't re-download models.
-# .paddlex: layout/orientation/unwarp models. HF cache: the VLM weights pulled by genai_server.
-model_cache = beam.Volume(
-    name="paddleocr-models",
-    mount_path="/home/paddleocr/.paddlex/official_models",
-)
-hf_cache = beam.Volume(
-    name="paddleocr-hf-cache",
-    mount_path="/home/paddleocr/.cache/huggingface",
+model_cache = modal.Volume.from_name("paddleocr-models", create_if_missing=True)
+hf_cache = modal.Volume.from_name("paddleocr-hf-cache", create_if_missing=True)
+
+# R2 (S3-compatible). Secret must hold AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
+r2_secret = modal.Secret.from_name(R2_SECRET_NAME)
+r2_mount = modal.CloudBucketMount(
+    bucket_name=R2_BUCKET,
+    bucket_endpoint_url=R2_ENDPOINT,  # required for R2
+    secret=r2_secret,
 )
 
-# Cloudflare R2 (S3-compatible). access_key/secret_key are Beam secret *names*.
-# All values env-driven (ocr.config) so prod <-> staging is a deploy-time switch.
-uploads_bucket = beam.CloudBucket(
-    name=R2_BUCKET,
-    mount_path=MOUNT_PATH,
-    config=beam.CloudBucketConfig(
-        access_key=R2_ACCESS_KEY_SECRET,
-        secret_key=R2_SECRET_KEY_SECRET,
-        endpoint=R2_ENDPOINT,
-        region=R2_REGION,
-    ),
-)
-
-VOLUMES = [model_cache, hf_cache, uploads_bucket]
+# Mounts attached to the service (path -> volume/mount).
+VOLUMES = {
+    "/home/paddleocr/.paddlex/official_models": model_cache,
+    "/home/paddleocr/.cache/huggingface": hf_cache,
+    MOUNT_PATH: r2_mount,
+}
+SECRETS = [r2_secret]
