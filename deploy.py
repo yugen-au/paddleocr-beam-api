@@ -87,6 +87,7 @@ def main() -> None:
         )
 
     env = {**os.environ, **cfg}
+    env.setdefault("PYTHONUTF8", "1")  # so beam's unicode output (e.g. ✗/❌) doesn't crash cp1252 on Windows
 
     print(f"Context     : {args.context}")
     print(f"Environment : {args.environment}")
