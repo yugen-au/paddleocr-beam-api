@@ -32,7 +32,7 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
   - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env=RUNTIME_ENV)` (param is `env`, a Dict[str,str] — NOT `env_vars`) — required for `VLM_*` to take effect at runtime (`boot()` runs in-container).
   - Cold-start mitigation: `@endpoint` has `keep_warm_seconds` (default 180); bump for the spiky `latency` profile.
 - Resource profiles via `BEAM_PROFILE` (cost=RTX4090 / latency=H100), resolved at deploy time.
-- R2 bucket mounted at `MOUNT_PATH` (`./protocols`, a local dir); uploads read from mount, output images -> `images/<name>_<session>/`.
+- R2 bucket mounted at `MOUNT_PATH` (`./r2-bucket`, a local dir); uploads read from mount, output images -> `images/<name>_<session>/`.
 - Secrets via Beam secret names: `BEAM_S3_KEY`, `BEAM_S3_SECRET`.
 
 ## Open / verify-on-deploy

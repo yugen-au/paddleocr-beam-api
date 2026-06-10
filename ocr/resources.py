@@ -20,10 +20,12 @@ image = (
     .add_commands([
         # cache-bust: bump to force a rebuild + refresh the floating paddleocr below
         'echo "build: 2026-06-09"',
-        # floor-pin paddlepaddle (CUDA 12.6 index); float paddleocr to newest
-        'pip install -U "paddlepaddle-gpu>=3.2.1" -i https://www.paddlepaddle.org.cn/packages/stable/cu126/',
+        # Do NOT install/upgrade paddlepaddle-gpu: the base image ships it (3.2.1)
+        # wired to its CUDA libs. A user-site `-U` upgrade shadows it and breaks
+        # libnvrtc at import. To move paddle, bump the base image digest instead.
+        # paddleocr is pure-Python (no CUDA libs) so floating it is safe; gets >=3.6.0 for VL-1.6.
         'pip install -U "paddleocr[doc-parser]"',
-        # FastDeploy accelerated VLM backend (version chosen to match paddleocr)
+        # FastDeploy accelerated VLM backend (imports the base image's paddle)
         'paddleocr install_genai_server_deps fastdeploy',
     ])
 )

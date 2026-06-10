@@ -14,7 +14,7 @@ constants here rather than masquerading as env vars.
 import os
 
 # --- Fixed constants (not configurable) --------------------------------------
-MOUNT_PATH = "./protocols"           # in-container R2 mount dir
+MOUNT_PATH = "./r2-bucket"           # in-container R2 mount dir
 VLM_HOST = "127.0.0.1"               # sidecar is always local
 VLM_BACKEND = "fastdeploy-server"    # coupled to the code path
 R2_REGION = "auto"                   # R2 is always "auto"
