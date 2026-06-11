@@ -29,6 +29,8 @@ APP_NAME = f"paddleocr-vl-{DEPLOY_ENV}"
 # modal.Secret holding AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (the R2 keys).
 R2_SECRET_NAME = "r2-creds"
 GPU_SUPPORTS_FA3 = GPU in {"H100", "H200", "B200"}  # A10G/L40S do not
+# FastDeploy itself is baked into the base image (official prebuilt server image),
+# CUDA-matched and tested — no install/version/index config needed here anymore.
 
 # FastDeploy VLM sidecar (0.9B model served as a separate OpenAI-compatible
 # process; the pipeline delegates VLM recognition to it over HTTP).

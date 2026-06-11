@@ -1,9 +1,11 @@
 """Modal infrastructure: App, image, persistent volumes, R2 mount, secret.
 
-The vendor PaddleOCR-VL image runs as ROOT on Modal (validated), using the
-image's own Python 3.10 (which has paddle + paddleocr). FastDeploy is NOT in the
-base image — it's installed at runtime in boot() (needs the GPU, which is only
-attached at runtime, not at build).
+Base = the OFFICIAL prebuilt PaddleOCR-VL genai server image (fastdeploy-cuda-12.6
+2.3.0 + paddleocr/paddlex baked in). It has the FastDeploy serving stack AND the
+pipeline, all maintainer-tested and CUDA-matched — so we do ZERO installs. This
+replaced self-installing fastdeploy-gpu from the arch-specific index, whose wheel
+was CUDA-mismatched and crashed the serving worker at KV-cache init on L40S.
+Runs as user `paddleocr` (uid 1000), image's own python 3.10.
 """
 import modal
 
@@ -19,20 +21,25 @@ from ocr.config import (
 
 app = modal.App(APP_NAME)  # paddleocr-vl-{prod,staging} -> separate deployments
 
-# Pinned vendor image, run as-is (root, image's python). `pip install -U paddleocr`
-# floats to >=3.6.0 for VL-1.6 (pure-python, safe). `add_local_python_source`
-# ships our `ocr` package into the container.
+# Official VLM-server image (fastdeploy backend, nvidia-gpu). `add_python=None`:
+# use the image's own python (has paddle/paddleocr/fastdeploy). No installs —
+# `add_local_python_source` just ships our `ocr` package in. `.env` bakes the
+# deploy-resolved config so config.py reads identical values at runtime (Modal
+# re-imports it in the container, where the deploy shell's env is absent).
 image = (
     modal.Image.from_registry(
-        "ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl@sha256:e2b525b8fb8ac5711eac667d574dbcf5516a2e6a5437a416357ce64ba1b81a58"
+        "ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-genai-fastdeploy-server:latest-nvidia-gpu",
+        add_python=None,
     )
-    # pip_install (not uv_pip_install): uv's strict whole-env resolution could
-    # disturb the vendor's pinned paddlepaddle-gpu (CUDA wiring); pip is surgical.
-    # Version floor forces the upgrade off the base image's 3.3.2 -> VL-1.6.
-    .pip_install("paddleocr[doc-parser]>=3.6.0", "fastapi")
-    # Bake the deploy-resolved config so config.py reads identical values at
-    # runtime (Modal re-imports it in the container, where the deploy shell's env
-    # is absent). Required for GPU_SUPPORTS_FA3 to reflect the real GPU.
+    # The server image has base paddleocr/paddlex but NOT the pipeline extras
+    # (layout/orientation/unwarp). Add the doc-parser extra via uv, unpinned — let
+    # it resolve whatever it wants (pinning to <3.5 gave a paddlex whose model
+    # registry didn't know PaddleOCR-VL-1.6-0.9B -> "Unknown model").
+    # unsafe-best-match: consider all (trusted) indexes, as elsewhere.
+    .uv_pip_install(
+        "paddleocr[doc-parser]",
+        extra_options="--index-strategy unsafe-best-match",
+    )
     .env({
         "MODAL_GPU": GPU,
         "DEPLOY_ENV": DEPLOY_ENV,
