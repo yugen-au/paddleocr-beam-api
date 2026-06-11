@@ -16,9 +16,10 @@ import os
 import subprocess
 import sys
 
+_R2_ENDPOINT = "https://9d7bee7c1c5f0c0206e497f750384ae3.r2.cloudflarestorage.com"
 ENVIRONMENTS = {
-    "prod":    {"DEPLOY_ENV": "prod",    "R2_BUCKET": "yugen-assets"},
-    "staging": {"DEPLOY_ENV": "staging", "R2_BUCKET": "yugen-assets-staging"},
+    "prod":    {"DEPLOY_ENV": "prod",    "R2_BUCKET": "yugen-assets",         "R2_ENDPOINT": _R2_ENDPOINT},
+    "staging": {"DEPLOY_ENV": "staging", "R2_BUCKET": "yugen-assets-staging", "R2_ENDPOINT": _R2_ENDPOINT},
 }
 
 

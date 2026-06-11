@@ -8,6 +8,7 @@ attached at runtime, not at build).
 import modal
 
 from ocr.config import (
+    APP_NAME,
     DEPLOY_ENV,
     GPU,
     MOUNT_PATH,
@@ -16,7 +17,7 @@ from ocr.config import (
     R2_SECRET_NAME,
 )
 
-app = modal.App("paddleocr-vl")
+app = modal.App(APP_NAME)  # paddleocr-vl-{prod,staging} -> separate deployments
 
 # Pinned vendor image, run as-is (root, image's python). `pip install -U paddleocr`
 # floats to >=3.6.0 for VL-1.6 (pure-python, safe). `add_local_python_source`
