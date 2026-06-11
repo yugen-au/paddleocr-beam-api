@@ -26,10 +26,10 @@ image = (
     modal.Image.from_registry(
         "ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl@sha256:e2b525b8fb8ac5711eac667d574dbcf5516a2e6a5437a416357ce64ba1b81a58"
     )
-    .run_commands(
-        'pip install -U "paddleocr[doc-parser]"',  # >=3.6.0 for VL-1.6
-        "pip install fastapi",                       # for @modal.asgi_app (no-op if present)
-    )
+    # pip_install (not uv_pip_install): uv's strict whole-env resolution could
+    # disturb the vendor's pinned paddlepaddle-gpu (CUDA wiring); pip is surgical.
+    # Version floor forces the upgrade off the base image's 3.3.2 -> VL-1.6.
+    .pip_install("paddleocr[doc-parser]>=3.6.0", "fastapi")
     # Bake the deploy-resolved config so config.py reads identical values at
     # runtime (Modal re-imports it in the container, where the deploy shell's env
     # is absent). Required for GPU_SUPPORTS_FA3 to reflect the real GPU.
