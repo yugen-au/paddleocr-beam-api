@@ -8,6 +8,8 @@ attached at runtime, not at build).
 import modal
 
 from ocr.config import (
+    DEPLOY_ENV,
+    GPU,
     MOUNT_PATH,
     R2_BUCKET,
     R2_ENDPOINT,
@@ -27,6 +29,15 @@ image = (
         'pip install -U "paddleocr[doc-parser]"',  # >=3.6.0 for VL-1.6
         "pip install fastapi",                       # for @modal.asgi_app (no-op if present)
     )
+    # Bake the deploy-resolved config so config.py reads identical values at
+    # runtime (Modal re-imports it in the container, where the deploy shell's env
+    # is absent). Required for GPU_SUPPORTS_FA3 to reflect the real GPU.
+    .env({
+        "MODAL_GPU": GPU,
+        "DEPLOY_ENV": DEPLOY_ENV,
+        "R2_BUCKET": R2_BUCKET,
+        "R2_ENDPOINT": R2_ENDPOINT,
+    })
     .add_local_python_source("ocr")
 )
 
