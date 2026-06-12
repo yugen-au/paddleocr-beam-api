@@ -35,9 +35,12 @@ image = (
     # (layout/orientation/unwarp). Add the doc-parser extra via uv, unpinned — let
     # it resolve whatever it wants (pinning to <3.5 gave a paddlex whose model
     # registry didn't know PaddleOCR-VL-1.6-0.9B -> "Unknown model").
+    # boto3: write artifacts to R2 via the S3 API so objects get correct
+    # Content-Type (the CloudBucketMount can't set it) for admin/public serving.
     # unsafe-best-match: consider all (trusted) indexes, as elsewhere.
     .uv_pip_install(
         "paddleocr[doc-parser]",
+        "boto3",
         extra_options="--index-strategy unsafe-best-match",
     )
     .env({

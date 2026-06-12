@@ -1,24 +1,50 @@
 """Modal service. Boots the pipeline once per container (@modal.enter), then
 serves the two OCR endpoints as POST routes on a FastAPI app (@modal.asgi_app).
-The extraction logic is unchanged from the Beam version — only the wrapper differs.
+
+Per request we persist all artifacts to R2 under ocr/<session_id>/ (original,
+per-page raw json + markdown + visualizations + extracted images, then a
+result.json manifest written last as the commit marker) and return the keys
+alongside the inline extraction.
 """
 import os
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import modal
 
-from ocr.config import GPU
-from ocr.io import prepare_input_file
+from ocr import artifacts
+from ocr.config import GPU, R2_BUCKET
+from ocr.io import PreparedInput, prepare_input_file
 from ocr.metrics import calculate_character_metrics
 from ocr.pipeline import boot
 from ocr.resources import SECRETS, VOLUMES, app, image
-from ocr.storage import save_images_to_r2
 
 
 def _session_id() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4())[:8]
+
+
+def _persist_all(
+    pipeline, prepared: PreparedInput, session_id: str,
+    file_name: Optional[str], image_data: Optional[str],
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    """Run prediction, persist every artifact under the session prefix, write the
+    manifest last. Returns (per-page summaries, r2 reference block)."""
+    input_method = "base64" if image_data else "s3_upload"
+    original_key = artifacts.save_original(session_id, prepared.data, prepared.ext)
+
+    output = pipeline.predict(prepared.path)
+    pages = [artifacts.persist_page(session_id, i + 1, res) for i, res in enumerate(output)]
+
+    artifacts.save_manifest(session_id, original_key, file_name, input_method, pages)
+    r2 = {
+        "bucket": R2_BUCKET,
+        "prefix": artifacts.session_prefix(session_id) + "/",
+        "manifest_key": artifacts.manifest_key(session_id),
+        "original_key": original_key,
+    }
+    return pages, r2
 
 
 def _extract_and_analyze(
@@ -30,39 +56,37 @@ def _extract_and_analyze(
     include_layout_analysis: bool,
 ) -> Dict[str, Any]:
     try:
-        input_path = prepare_input_file(image_data, file_name)
-        temp_file_created = image_data is not None
+        session_id = _session_id()
+        prepared = prepare_input_file(image_data, file_name)
         try:
-            print(f"Processing document with PaddleOCR-VL: {input_path}")
-            output = pipeline.predict(input_path)
+            print(f"Processing document with PaddleOCR-VL: {prepared.path}")
+            pages, r2 = _persist_all(pipeline, prepared, session_id, file_name, image_data)
 
-            session_id = _session_id()
             results = []
-            for page_idx, res in enumerate(output):
-                result_data = {
-                    "success": True,
-                    "page": page_idx + 1,
-                    "text_content": res.text if hasattr(res, "text") else "",
-                    "structure_info": {},
+            for p in pages:
+                rd = {
+                    "page": p["page"],
+                    "text_content": p["text_content"],
+                    "structure_info": {"json": p["raw"]},
+                    "artifacts": {
+                        "raw_result": p["raw_result_key"],
+                        "page_md": p["page_md_key"],
+                        "viz": p["viz_keys"],
+                        "extracted": p["extracted_keys"],
+                    },
                 }
-                if hasattr(res, "json") and res.json:
-                    result_data["structure_info"]["json"] = res.json
-                if output_format == "markdown" and hasattr(res, "markdown"):
-                    result_data["markdown"] = res.markdown
-                if include_layout_analysis and hasattr(res, "layout"):
-                    result_data["layout_analysis"] = res.layout
+                if output_format == "markdown":
+                    rd["markdown"] = p["markdown_text"]
                 if include_character_metrics:
-                    result_data["character_metrics"] = calculate_character_metrics(res)
-                results.append(result_data)
-
-            print(f"Saving images to R2 with session ID: {session_id}")
-            cleaned_results = save_images_to_r2(results, session_id, file_name)
+                    rd["character_metrics"] = calculate_character_metrics(p["text_content"])
+                results.append(rd)
 
             return {
                 "success": True,
-                "results": cleaned_results,
-                "total_pages": len(cleaned_results),
                 "session_id": session_id,
+                "r2": r2,
+                "results": results,
+                "total_pages": len(results),
                 "original_filename": file_name,
                 "input_method": "base64" if image_data else "s3_upload",
                 "processing_info": {
@@ -76,9 +100,11 @@ def _extract_and_analyze(
                 },
             }
         finally:
-            if temp_file_created and os.path.exists(input_path):
-                os.unlink(input_path)
+            if prepared.is_temp and os.path.exists(prepared.path):
+                os.unlink(prepared.path)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"success": False, "error": str(e), "error_type": type(e).__name__}
 
 
@@ -86,42 +112,23 @@ def _extract_simple(
     pipeline, image_data: Optional[str], file_name: Optional[str]
 ) -> Dict[str, Any]:
     try:
-        input_path = prepare_input_file(image_data, file_name)
-        temp_file_created = image_data is not None
+        session_id = _session_id()
+        prepared = prepare_input_file(image_data, file_name)
         try:
-            print(f"Processing document with PaddleOCR-VL (simple): {input_path}")
-            output = pipeline.predict(input_path)
+            print(f"Processing document with PaddleOCR-VL (simple): {prepared.path}")
+            pages, r2 = _persist_all(pipeline, prepared, session_id, file_name, image_data)
 
-            session_id = _session_id()
-            all_text, character_metrics, raw_results = [], [], []
-            for page_idx, res in enumerate(output):
-                if hasattr(res, "text") and res.text:
-                    all_text.append(res.text)
-                    character_metrics.append(calculate_character_metrics(res))
-                raw_results.append({"page": page_idx + 1, "raw_data": res})
-
-            print(f"Saving images to R2 with session ID: {session_id}")
-            cleaned_raw_results = save_images_to_r2(raw_results, session_id, file_name)
-
-            full_text = "\n".join(all_text)
+            full_text = "\n".join(p["text_content"] for p in pages if p["text_content"])
             words = full_text.split()
-            if character_metrics:
-                avg_metrics = {
-                    "average_character_count": sum(m.get("character_count", 0) for m in character_metrics) / len(character_metrics),
-                    "average_word_length": sum(m.get("average_word_length", 0) for m in character_metrics) / len(character_metrics),
-                    "total_lines": sum(m.get("line_count", 0) for m in character_metrics),
-                }
-            else:
-                avg_metrics = {"note": "No character metrics available"}
-
             return {
                 "success": True,
+                "session_id": session_id,
+                "r2": r2,
                 "extracted_text": full_text,
                 "word_count": len(words),
                 "character_count": len(full_text.replace(" ", "")),
-                "character_metrics": avg_metrics,
-                "session_id": session_id,
-                "raw_results": cleaned_raw_results,
+                "character_metrics": calculate_character_metrics(full_text),
+                "total_pages": len(pages),
                 "input_method": "base64" if image_data else "s3_upload",
                 "processing_info": {
                     "model": "PaddleOCR-VL",
@@ -130,10 +137,12 @@ def _extract_simple(
                 },
             }
         finally:
-            if temp_file_created and os.path.exists(input_path):
-                os.unlink(input_path)
+            if prepared.is_temp and os.path.exists(prepared.path):
+                os.unlink(prepared.path)
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e), "error_type": type(e).__name__}
 
 
 @app.cls(

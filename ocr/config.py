@@ -28,6 +28,9 @@ APP_NAME = f"paddleocr-vl-{DEPLOY_ENV}"
 # --- Constants (don't vary per deploy) ----------------------------------------
 # modal.Secret holding AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (the R2 keys).
 R2_SECRET_NAME = "r2-creds"
+# R2 key prefix under which all persisted artifacts live, flat by session:
+# ocr/<session_id>/{original,result.json,p0001/{raw_result.json,page.md,viz,extracted}}
+ARTIFACT_ROOT = "ocr"
 GPU_SUPPORTS_FA3 = GPU in {"H100", "H200", "B200"}  # A10G/L40S do not
 # FastDeploy itself is baked into the base image (official prebuilt server image),
 # CUDA-matched and tested — no install/version/index config needed here anymore.

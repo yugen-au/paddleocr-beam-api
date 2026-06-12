@@ -1,21 +1,18 @@
-"""Character-level metrics derived from OCR text output."""
+"""Character-level metrics derived from extracted OCR text."""
 from typing import Any, Dict
 
 
-def calculate_character_metrics(ocr_result) -> Dict[str, Any]:
-    """Calculate character-level metrics from an OCR result object."""
+def calculate_character_metrics(text: str) -> Dict[str, Any]:
+    """Character-level metrics from already-extracted plain text."""
     try:
-        text = ocr_result.text if hasattr(ocr_result, "text") else ""
-
         if not text:
             return {"note": "No text found for character analysis"}
 
         words = text.split()
-
         return {
             "character_count": len(text.replace(" ", "")),
             "word_count": len(words),
-            "average_word_length": sum(len(word) for word in words) / len(words) if words else 0,
+            "average_word_length": sum(len(w) for w in words) / len(words) if words else 0,
             "line_count": len(text.split("\n")),
             "note": "Character metrics from PaddleOCR-VL text analysis",
         }
