@@ -114,6 +114,36 @@ def _join_block_content(raw: Dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+# Doc-preprocessor stage arrays -> output filename stem. res.img only exposes the
+# 3-stage composite ('preprocessed_img'); the individual stages live as BGR numpy
+# arrays on the doc_preprocessor sub-result (paddlex doc_preprocessor/result.py).
+_PREPROC_STAGES = (
+    ("input_img", "preprocessed_input"),       # original
+    ("rot_img", "preprocessed_rotated"),       # after orientation correction
+    ("output_img", "preprocessed_output"),     # after unwarping (final clean doc)
+)
+
+
+def _stage_images(res):
+    """Yield (filename_stem, PIL.Image) for each doc-preprocessor stage, RGB."""
+    from PIL import Image
+
+    dp = res.get("doc_preprocessor_res")
+    if dp is None:
+        return
+    dps = dp if isinstance(dp, list) else [dp]
+    for i, d in enumerate(dps):
+        sfx = f"_{i}" if len(dps) > 1 else ""
+        getter = d.get if hasattr(d, "get") else (lambda *_: None)
+        for key, stem in _PREPROC_STAGES:
+            arr = getter(key)
+            if arr is None:
+                continue
+            if getattr(arr, "ndim", 0) == 3 and arr.shape[2] == 3:
+                arr = arr[:, :, ::-1]  # BGR -> RGB
+            yield f"{stem}{sfx}", Image.fromarray(arr.copy())
+
+
 def persist_page(session_id: str, page_no: int, res) -> Dict[str, Any]:
     """Write raw_result.json, page.md, viz/*, extracted/* for one page.
 
@@ -130,8 +160,13 @@ def persist_page(session_id: str, page_no: int, res) -> Dict[str, Any]:
     md_key = put_bytes(f"{pdir}/page.md", md_text.encode("utf-8"), "text/markdown; charset=utf-8") if md_text else None
 
     viz_keys: List[str] = []
-    for name, img in (res.img or {}).items():
-        viz_keys.append(put_pil(f"{pdir}/viz/{name}.png", img))
+    # Layout overlay (keep). Skip res.img['preprocessed_img'] — it's the 3-stage
+    # composite; we save the stages individually below instead.
+    layout_img = (res.img or {}).get("layout_det_res")
+    if layout_img is not None:
+        viz_keys.append(put_pil(f"{pdir}/viz/layout_det_res.png", layout_img))
+    for stem, img in _stage_images(res):
+        viz_keys.append(put_pil(f"{pdir}/viz/{stem}.png", img))
 
     extracted_keys: List[str] = []
     for relpath, img in (md.get("markdown_images") or {}).items():
