@@ -52,6 +52,20 @@ image = (
     .add_local_python_source("ocr")
 )
 
+# Lightweight CPU image for the sectioning endpoint (pure geometry, no GPU/model
+# stack) — small + fast cold start. Same baked config so config.py agrees.
+cpu_image = (
+    modal.Image.debian_slim(python_version="3.11")
+    .pip_install("pillow", "boto3", "fastapi")
+    .env({
+        "MODAL_GPU": GPU,
+        "DEPLOY_ENV": DEPLOY_ENV,
+        "R2_BUCKET": R2_BUCKET,
+        "R2_ENDPOINT": R2_ENDPOINT,
+    })
+    .add_local_python_source("ocr")
+)
+
 # Persistent caches so cold starts don't re-download models.
 model_cache = modal.Volume.from_name("paddleocr-models", create_if_missing=True)
 hf_cache = modal.Volume.from_name("paddleocr-hf-cache", create_if_missing=True)

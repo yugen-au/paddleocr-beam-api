@@ -58,6 +58,14 @@ def _content_type(key: str) -> str:
     return _CONTENT_TYPES.get(os.path.splitext(key)[1].lower(), "application/octet-stream")
 
 
+def get_bytes(key: str) -> bytes:
+    return _s3().get_object(Bucket=R2_BUCKET, Key=key)["Body"].read()
+
+
+def get_json(key: str) -> Any:
+    return json.loads(get_bytes(key).decode("utf-8"))
+
+
 def put_bytes(key: str, data: bytes, content_type: Optional[str] = None) -> str:
     _s3().put_object(
         Bucket=R2_BUCKET, Key=key, Body=data,

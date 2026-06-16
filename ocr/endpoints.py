@@ -18,7 +18,7 @@ from ocr.config import GPU, R2_BUCKET
 from ocr.io import PreparedInput, prepare_input_file
 from ocr.metrics import calculate_character_metrics
 from ocr.pipeline import boot
-from ocr.resources import SECRETS, VOLUMES, app, image
+from ocr.resources import SECRETS, VOLUMES, app, cpu_image, image
 
 
 def _session_id() -> str:
@@ -145,6 +145,62 @@ def _extract_simple(
         return {"success": False, "error": str(e), "error_type": type(e).__name__}
 
 
+def _crop_and_section(
+    session_id: Optional[str], margin: int = 20, target_ar: Optional[float] = None
+) -> Dict[str, Any]:
+    """Crop each page of a prior OCR session to its text bound and split it into
+    N sections (N = round(AR/target_ar)), cuts snapped to whitespace gaps. Reads
+    the session's artifacts from R2, writes crops/sections back. CPU-only."""
+    try:
+        if not session_id:
+            return {"success": False, "error": "session_id is required"}
+        from io import BytesIO
+
+        from PIL import Image
+
+        from ocr import sectioning
+
+        ta = float(target_ar) if target_ar else sectioning.SQRT2
+        margin = int(margin)
+        manifest = artifacts.get_json(artifacts.manifest_key(session_id))
+
+        pages_out = []
+        for page in manifest.get("pages", []):
+            prefix = page["prefix"]
+            raw = artifacts.get_json(page["raw_result_key"])
+            img_key = next((k for k in page.get("viz_keys", []) if "preprocessed_output" in k), None)
+            if not img_key:
+                raise RuntimeError(f"no preprocessed_output for page {page.get('page')}")
+
+            img = Image.open(BytesIO(artifacts.get_bytes(img_key))).convert("RGB")
+            res = raw.get("res", raw)
+            rw, rh = res.get("width"), res.get("height")
+            W, H = img.size
+            sx, sy = (W / rw, H / rh) if (rw and rh and (rw, rh) != (W, H)) else (1.0, 1.0)
+
+            polys = sectioning.polygons_from_result(raw, sx, sy)
+            crop, sections, info = sectioning.section_page(img, polys, margin, ta)
+
+            crop_key = artifacts.put_pil(f"{prefix}/crop.png", crop)
+            section_keys = [artifacts.put_pil(f"{prefix}/sections/section_{i:02d}.png", s)
+                            for i, s in enumerate(sections, 1)]
+            pages_out.append({"page": page["page"], **info,
+                              "crop_key": crop_key, "section_keys": section_keys})
+
+        return {
+            "success": True,
+            "session_id": session_id,
+            "bucket": R2_BUCKET,
+            "margin": margin,
+            "target_ar": round(ta, 4),
+            "pages": pages_out,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e), "error_type": type(e).__name__}
+
+
 @app.cls(
     image=image,
     gpu=GPU,
@@ -181,6 +237,31 @@ class OCRService:
         def extract_text_simple(body: dict):
             return _extract_simple(
                 self.pipeline, body.get("image_data"), body.get("file_name")
+            )
+
+        return web_app
+
+
+@app.cls(
+    image=cpu_image,        # CPU-only: pure geometry, no GPU/model stack
+    secrets=SECRETS,
+    scaledown_window=120,
+    timeout=300,
+)
+@modal.concurrent(max_inputs=20)
+class SectionService:
+    @modal.asgi_app()
+    def web(self):
+        from fastapi import FastAPI
+
+        web_app = FastAPI(title="PaddleOCR-VL Sectioning")
+
+        @web_app.post("/crop_and_section")
+        def crop_and_section(body: dict):
+            return _crop_and_section(
+                body.get("session_id"),
+                body.get("margin", 20),
+                body.get("target_ar"),
             )
 
         return web_app
