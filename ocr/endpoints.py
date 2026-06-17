@@ -27,14 +27,16 @@ def _session_id() -> str:
 
 def _persist_all(
     pipeline, prepared: PreparedInput, session_id: str,
-    file_name: Optional[str], image_data: Optional[str],
+    file_name: Optional[str], image_data: Optional[str], unwarp: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Run prediction, persist every artifact under the session prefix, write the
     manifest last. Returns (per-page summaries, r2 reference block)."""
     input_method = "base64" if image_data else "s3_upload"
     original_key = artifacts.save_original(session_id, prepared.data, prepared.ext)
 
-    output = pipeline.predict(prepared.path)
+    # use_doc_unwarping off unless the caller opts in -- the dewarp isn't
+    # idempotent and bends edges even on flat docs (drive it from a skew check).
+    output = pipeline.predict(prepared.path, use_doc_unwarping=unwarp)
     pages = [artifacts.persist_page(session_id, i + 1, res) for i, res in enumerate(output)]
 
     artifacts.save_manifest(session_id, original_key, file_name, input_method, pages)
@@ -54,13 +56,16 @@ def _extract_and_analyze(
     output_format: str,
     include_character_metrics: bool,
     include_layout_analysis: bool,
+    unwarp: bool = False,
 ) -> Dict[str, Any]:
     try:
         session_id = _session_id()
         prepared = prepare_input_file(image_data, file_name)
         try:
             print(f"Processing document with PaddleOCR-VL: {prepared.path}")
-            pages, r2 = _persist_all(pipeline, prepared, session_id, file_name, image_data)
+            pages, r2 = _persist_all(
+                pipeline, prepared, session_id, file_name, image_data, unwarp
+            )
 
             results = []
             for p in pages:
@@ -94,7 +99,7 @@ def _extract_and_analyze(
                     "gpu_accelerated": True,
                     "features_used": {
                         "doc_orientation_classify": True,
-                        "doc_unwarping": True,
+                        "doc_unwarping": unwarp,
                         "layout_detection": include_layout_analysis,
                     },
                 },
@@ -109,14 +114,17 @@ def _extract_and_analyze(
 
 
 def _extract_simple(
-    pipeline, image_data: Optional[str], file_name: Optional[str]
+    pipeline, image_data: Optional[str], file_name: Optional[str],
+    unwarp: bool = False,
 ) -> Dict[str, Any]:
     try:
         session_id = _session_id()
         prepared = prepare_input_file(image_data, file_name)
         try:
             print(f"Processing document with PaddleOCR-VL (simple): {prepared.path}")
-            pages, r2 = _persist_all(pipeline, prepared, session_id, file_name, image_data)
+            pages, r2 = _persist_all(
+                pipeline, prepared, session_id, file_name, image_data, unwarp
+            )
 
             full_text = "\n".join(p["text_content"] for p in pages if p["text_content"])
             words = full_text.split()
@@ -231,12 +239,16 @@ class OCRService:
                 body.get("output_format", "json"),
                 body.get("include_character_metrics", True),
                 body.get("include_layout_analysis", True),
+                body.get("unwarp", False),
             )
 
         @web_app.post("/extract_text_simple")
         def extract_text_simple(body: dict):
             return _extract_simple(
-                self.pipeline, body.get("image_data"), body.get("file_name")
+                self.pipeline,
+                body.get("image_data"),
+                body.get("file_name"),
+                body.get("unwarp", False),
             )
 
         return web_app
