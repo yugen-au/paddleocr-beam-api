@@ -25,15 +25,12 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
 - Model caches (persistent volumes): `.paddlex/official_models` + HF cache `~/.cache/huggingface`
   (HF cache is required so the genai server doesn't re-download VLM weights every cold start).
 - Local env via uv: `uv sync` (dev: beam-client + paddleocr stubs + pytest/ruff) or `uv sync --no-dev` (deploy-only). Source of truth: `pyproject.toml` + `uv.lock`. venv is `.venv` (beam-env retired).
-- Deploy via `uv run python deploy.py <prod|staging>` (cross-platform; sets env + runs `beam -c yugen-au deploy`).
-- Beam is one-workspace-per-account (no multi-workspace), so prod/staging share the `yugen-au` workspace and are separated by **deployment name suffix**: `BEAM_DEPLOY_ENV` → `paddleocr-vl-{extract,simple}-{prod,staging}`. They use the same R2 creds; only the bucket differs (yugen-assets vs -staging).
-  - `deploy.py` is the single source of env-var VALUES: `SHARED` (VLM knobs) + `ENVIRONMENTS` (per-env: profile + R2).
-  - `config.py` has NO defaults — reads `os.environ[...]` required; raises a pointed error if unset. Not importable standalone (tests must set env). Raw `beam deploy app.py:...` no longer works.
-  - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env=RUNTIME_ENV)` (param is `env`, a Dict[str,str] — NOT `env_vars`) — required for `VLM_*` to take effect at runtime (`boot()` runs in-container).
-  - Cold-start mitigation: `@endpoint` has `keep_warm_seconds` (default 180); bump for the spiky `latency` profile.
-- Resource profiles via `BEAM_PROFILE` (cost=RTX4090 / latency=H100), resolved at deploy time.
-- R2 access is all boto3 (`ocr/artifacts.py`), no CloudBucketMount: a mount is per-container (one fixed bucket) and can't set Content-Type. Bucket chosen per-request via `bucket_for(private)` (public `yugen-assets*` vs private `yugen-private-assets*`); creds from the `r2-creds` secret reach both. Artifacts persisted under `ocr/<session_id>/`.
-- Secrets via Beam secret names: `BEAM_S3_KEY`, `BEAM_S3_SECRET`.
+- Deploy: `uv run python deploy.py <main|staging>` (`--serve` ephemeral dev, `--gpu` override, `--dry-run`).
+- prod/staging = Modal **environments** (`main` + `staging`) in the one `yugen-au` workspace — selected by `-e`, single app name `paddleocr-vl`. `main` is active, so deploy.py always passes `-e`. Same R2 creds; only the bucket differs per env.
+- `deploy.py` owns per-env values (`ENVIRONMENTS`: DEPLOY_ENV + R2_BUCKET); `resources.py` `.env()` bakes them into the image so `config.py` reads the same values in-container. `config.py` env reads have a staging fallback (bare import works for tests).
+- GPU via `MODAL_GPU` (default L40S). Cold-start: `@app.cls(scaledown_window=300)`.
+- R2 access is all boto3 (`ocr/artifacts.py`), no CloudBucketMount (per-container + can't set Content-Type). Bucket chosen per-request by `bucket_for(private)`: public (`yugen-assets*`) vs private PII (`yugen-private-assets*`). Artifacts under `ocr/<session_id>/`.
+- Secrets via Modal secret `r2-creds` (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`).
 
 ## Open / verify-on-deploy
 - VLM server `/health` path (assumed) and exact GPU strings beyond H100/RTX4090

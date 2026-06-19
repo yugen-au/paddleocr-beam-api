@@ -18,7 +18,7 @@ from ocr.config import (
     R2_SECRET_NAME,
 )
 
-app = modal.App(APP_NAME)  # paddleocr-vl-{prod,staging} -> separate deployments
+app = modal.App(APP_NAME)  # one name; main/staging split by Modal environment (-e)
 
 # Official VLM-server image (fastdeploy backend, nvidia-gpu). `add_python=None`:
 # use the image's own python (has paddle/paddleocr/fastdeploy). No installs —

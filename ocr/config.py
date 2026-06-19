@@ -27,8 +27,11 @@ def bucket_for(private: bool) -> str:
     """R2 bucket for a request: the private (PII) bucket if `private`, else public."""
     return R2_PRIVATE_BUCKET if private else R2_BUCKET
 
-# Per-env Modal app name so prod/staging are separate deployments (don't clobber).
-APP_NAME = f"paddleocr-vl-{DEPLOY_ENV}"
+# Single app name across environments. prod/staging isolation comes from the
+# Modal *environment* (deploy.py passes `-e main|staging`), not the name; the
+# staging environment's web suffix differentiates endpoint URLs. DEPLOY_ENV is
+# still baked (drives R2_BUCKET + traceability), set to the environment name.
+APP_NAME = "paddleocr-vl"
 
 # --- Constants (don't vary per deploy) ----------------------------------------
 # modal.Secret holding AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (the R2 keys).
