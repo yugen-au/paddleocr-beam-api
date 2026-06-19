@@ -31,6 +31,7 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
 - GPU via `MODAL_GPU` (default L40S). Cold-start: `@app.cls(scaledown_window=300)`.
 - R2 access is all boto3 (`ocr/artifacts.py`), no CloudBucketMount (per-container + can't set Content-Type). Bucket chosen per-request by `bucket_for(private)`: public (`yugen-assets*`) vs private PII (`yugen-private-assets*`). Artifacts under `ocr/<session_id>/`.
 - Secrets via Modal secret `r2-creds` (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`).
+- Both web endpoints are private (`@modal.asgi_app(requires_proxy_auth=True)`): callers must send `Modal-Key`/`Modal-Secret` proxy-auth headers; Modal's edge rejects others before the container. Tokens managed in the Modal dashboard.
 
 ## Open / verify-on-deploy
 - VLM server `/health` path (assumed) and exact GPU strings beyond H100/RTX4090

@@ -230,7 +230,7 @@ class OCRService:
         # Runs once per container: start FastDeploy sidecar + build pipeline.
         self.pipeline = boot()
 
-    @modal.asgi_app()
+    @modal.asgi_app(requires_proxy_auth=True)  # Modal edge auth: caller sends Modal-Key/Modal-Secret
     def web(self):
         from fastapi import FastAPI
 
@@ -270,7 +270,7 @@ class OCRService:
 )
 @modal.concurrent(max_inputs=20)
 class SectionService:
-    @modal.asgi_app()
+    @modal.asgi_app(requires_proxy_auth=True)  # Modal edge auth: caller sends Modal-Key/Modal-Secret
     def web(self):
         from fastapi import FastAPI
 
