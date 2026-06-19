@@ -159,11 +159,14 @@ def _extract_simple(
 
 def _crop_and_section(
     session_id: Optional[str], margin: int = 20, target_ar: Optional[float] = None,
-    private: bool = False,
+    private: bool = False, page: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Crop each page of a prior OCR session to its text bound and split it into
     N sections (N = round(AR/target_ar)), cuts snapped to whitespace gaps. Reads
-    the session's artifacts from R2, writes crops/sections back. CPU-only."""
+    the session's artifacts from R2, writes crops/sections back. CPU-only.
+
+    If `page` (1-indexed) is given, only that page is processed (lets a per-page
+    caller avoid re-cropping the whole session); otherwise all pages."""
     try:
         if not session_id:
             return {"success": False, "error": "session_id is required"}
@@ -176,15 +179,18 @@ def _crop_and_section(
         ta = float(target_ar) if target_ar else sectioning.SQRT2
         margin = int(margin)
         bucket = bucket_for(private)
+        page_filter = int(page) if page is not None else None
         manifest = artifacts.get_json(artifacts.manifest_key(session_id), bucket=bucket)
 
         pages_out = []
-        for page in manifest.get("pages", []):
-            prefix = page["prefix"]
-            raw = artifacts.get_json(page["raw_result_key"], bucket=bucket)
-            img_key = next((k for k in page.get("viz_keys", []) if "preprocessed_output" in k), None)
+        for pg in manifest.get("pages", []):
+            if page_filter is not None and pg.get("page") != page_filter:
+                continue
+            prefix = pg["prefix"]
+            raw = artifacts.get_json(pg["raw_result_key"], bucket=bucket)
+            img_key = next((k for k in pg.get("viz_keys", []) if "preprocessed_output" in k), None)
             if not img_key:
-                raise RuntimeError(f"no preprocessed_output for page {page.get('page')}")
+                raise RuntimeError(f"no preprocessed_output for page {pg.get('page')}")
 
             img = Image.open(BytesIO(artifacts.get_bytes(img_key, bucket=bucket))).convert("RGB")
             res = raw.get("res", raw)
@@ -198,12 +204,17 @@ def _crop_and_section(
             crop_key = artifacts.put_pil(f"{prefix}/crop.png", crop, bucket=bucket)
             section_keys = [artifacts.put_pil(f"{prefix}/sections/section_{i:02d}.png", s, bucket=bucket)
                             for i, s in enumerate(sections, 1)]
-            pages_out.append({"page": page["page"], **info,
+            pages_out.append({"page": pg["page"], **info,
                               "crop_key": crop_key, "section_keys": section_keys})
+
+        if page_filter is not None and not pages_out:
+            return {"success": False,
+                    "error": f"page {page_filter} not found in session {session_id}"}
 
         return {
             "success": True,
             "session_id": session_id,
+            "page": page_filter,
             "bucket": bucket,
             "margin": margin,
             "target_ar": round(ta, 4),
@@ -283,6 +294,7 @@ class SectionService:
                 body.get("margin", 20),
                 body.get("target_ar"),
                 body.get("private", False),
+                body.get("page"),
             )
 
         return web_app
