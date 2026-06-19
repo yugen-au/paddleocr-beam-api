@@ -58,34 +58,35 @@ def _content_type(key: str) -> str:
     return _CONTENT_TYPES.get(os.path.splitext(key)[1].lower(), "application/octet-stream")
 
 
-def get_bytes(key: str) -> bytes:
-    return _s3().get_object(Bucket=R2_BUCKET, Key=key)["Body"].read()
+def get_bytes(key: str, bucket: Optional[str] = None) -> bytes:
+    return _s3().get_object(Bucket=bucket or R2_BUCKET, Key=key)["Body"].read()
 
 
-def get_json(key: str) -> Any:
-    return json.loads(get_bytes(key).decode("utf-8"))
+def get_json(key: str, bucket: Optional[str] = None) -> Any:
+    return json.loads(get_bytes(key, bucket).decode("utf-8"))
 
 
-def put_bytes(key: str, data: bytes, content_type: Optional[str] = None) -> str:
+def put_bytes(key: str, data: bytes, content_type: Optional[str] = None,
+              bucket: Optional[str] = None) -> str:
     _s3().put_object(
-        Bucket=R2_BUCKET, Key=key, Body=data,
+        Bucket=bucket or R2_BUCKET, Key=key, Body=data,
         ContentType=content_type or _content_type(key),
         CacheControl=_CACHE_CONTROL,
     )
     return key
 
 
-def put_pil(key: str, image, fmt: str = "PNG") -> str:
+def put_pil(key: str, image, fmt: str = "PNG", bucket: Optional[str] = None) -> str:
     if fmt == "JPEG" and image.mode not in ("RGB", "L"):
         image = image.convert("RGB")
     buf = io.BytesIO()
     image.save(buf, format=fmt)
-    return put_bytes(key, buf.getvalue())
+    return put_bytes(key, buf.getvalue(), bucket=bucket)
 
 
-def put_json(key: str, obj: Any) -> str:
+def put_json(key: str, obj: Any, bucket: Optional[str] = None) -> str:
     body = json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
-    return put_bytes(key, body, "application/json")
+    return put_bytes(key, body, "application/json", bucket=bucket)
 
 
 def session_prefix(session_id: str) -> str:
@@ -96,8 +97,8 @@ def manifest_key(session_id: str) -> str:
     return f"{session_prefix(session_id)}/result.json"
 
 
-def save_original(session_id: str, data: bytes, ext: str) -> str:
-    return put_bytes(f"{session_prefix(session_id)}/original/input{ext}", data)
+def save_original(session_id: str, data: bytes, ext: str, bucket: Optional[str] = None) -> str:
+    return put_bytes(f"{session_prefix(session_id)}/original/input{ext}", data, bucket=bucket)
 
 
 def _block_order(b: Dict[str, Any]) -> int:
@@ -152,7 +153,7 @@ def _stage_images(res):
             yield f"{stem}{sfx}", Image.fromarray(arr.copy())
 
 
-def persist_page(session_id: str, page_no: int, res) -> Dict[str, Any]:
+def persist_page(session_id: str, page_no: int, res, bucket: Optional[str] = None) -> Dict[str, Any]:
     """Write raw_result.json, page.md, viz/*, extracted/* for one page.
 
     Returns a summary with the written keys, the joined text, and the raw json +
@@ -161,26 +162,26 @@ def persist_page(session_id: str, page_no: int, res) -> Dict[str, Any]:
     pdir = f"{session_prefix(session_id)}/p{page_no:04d}"
 
     raw = res.json  # {'res': {...}}
-    raw_key = put_json(f"{pdir}/raw_result.json", raw)
+    raw_key = put_json(f"{pdir}/raw_result.json", raw, bucket=bucket)
 
     md = res.markdown if isinstance(res.markdown, dict) else {}
     md_text = md.get("markdown_texts") or ""
-    md_key = put_bytes(f"{pdir}/page.md", md_text.encode("utf-8"), "text/markdown; charset=utf-8") if md_text else None
+    md_key = put_bytes(f"{pdir}/page.md", md_text.encode("utf-8"), "text/markdown; charset=utf-8", bucket=bucket) if md_text else None
 
     viz_keys: List[str] = []
     # Layout overlay (keep). Skip res.img['preprocessed_img'] — it's the 3-stage
     # composite; we save the stages individually below instead.
     layout_img = (res.img or {}).get("layout_det_res")
     if layout_img is not None:
-        viz_keys.append(put_pil(f"{pdir}/viz/layout_det_res.png", layout_img))
+        viz_keys.append(put_pil(f"{pdir}/viz/layout_det_res.png", layout_img, bucket=bucket))
     for stem, img in _stage_images(res):
-        viz_keys.append(put_pil(f"{pdir}/viz/{stem}.png", img))
+        viz_keys.append(put_pil(f"{pdir}/viz/{stem}.png", img, bucket=bucket))
 
     extracted_keys: List[str] = []
     for relpath, img in (md.get("markdown_images") or {}).items():
         name = os.path.basename(relpath)
         fmt = "JPEG" if name.lower().endswith((".jpg", ".jpeg")) else "PNG"
-        extracted_keys.append(put_pil(f"{pdir}/extracted/{name}", img, fmt))
+        extracted_keys.append(put_pil(f"{pdir}/extracted/{name}", img, fmt, bucket=bucket))
 
     return {
         "page": page_no,
@@ -204,7 +205,7 @@ _MANIFEST_PAGE_KEYS = (
 
 def save_manifest(
     session_id: str, original_key: str, original_filename: Optional[str],
-    input_method: str, pages: List[Dict[str, Any]],
+    input_method: str, pages: List[Dict[str, Any]], bucket: Optional[str] = None,
 ) -> str:
     """Write result.json LAST — its presence marks the request complete."""
     manifest = {
@@ -216,4 +217,4 @@ def save_manifest(
         "total_pages": len(pages),
         "pages": [{k: p[k] for k in _MANIFEST_PAGE_KEYS} for p in pages],
     }
-    return put_json(manifest_key(session_id), manifest)
+    return put_json(manifest_key(session_id), manifest, bucket=bucket)

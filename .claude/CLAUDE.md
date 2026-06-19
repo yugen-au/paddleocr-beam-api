@@ -32,7 +32,7 @@ GPU-accelerated OCR API using PaddleOCR-VL, deployed on Beam.cloud. Extracts tex
   - Beam does NOT propagate the deploy shell env to the container, so `config.RUNTIME_ENV` is forwarded via `@endpoint(env=RUNTIME_ENV)` (param is `env`, a Dict[str,str] — NOT `env_vars`) — required for `VLM_*` to take effect at runtime (`boot()` runs in-container).
   - Cold-start mitigation: `@endpoint` has `keep_warm_seconds` (default 180); bump for the spiky `latency` profile.
 - Resource profiles via `BEAM_PROFILE` (cost=RTX4090 / latency=H100), resolved at deploy time.
-- R2 bucket mounted at `MOUNT_PATH` (`./r2-bucket`, a local dir); uploads read from mount, output images -> `images/<name>_<session>/`.
+- R2 access is all boto3 (`ocr/artifacts.py`), no CloudBucketMount: a mount is per-container (one fixed bucket) and can't set Content-Type. Bucket chosen per-request via `bucket_for(private)` (public `yugen-assets*` vs private `yugen-private-assets*`); creds from the `r2-creds` secret reach both. Artifacts persisted under `ocr/<session_id>/`.
 - Secrets via Beam secret names: `BEAM_S3_KEY`, `BEAM_S3_SECRET`.
 
 ## Open / verify-on-deploy

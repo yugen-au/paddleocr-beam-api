@@ -11,16 +11,21 @@ container at runtime. resources.py bakes the deploy-resolved env into the image
 """
 import os
 
-# R2 bucket is mounted here in the container (Modal uses absolute mount paths).
-MOUNT_PATH = "/r2-bucket"
-
 # --- Per-environment (varies per deploy; set by deploy.py, staging fallback) ---
 DEPLOY_ENV = os.environ.get("DEPLOY_ENV", "staging")
 R2_BUCKET = os.environ.get("R2_BUCKET", "yugen-assets-staging")
+# Private counterpart in the same R2 account, for PII docs. Naming convention:
+# yugen-assets* -> yugen-private-assets*. Selected per-request via bucket_for().
+R2_PRIVATE_BUCKET = R2_BUCKET.replace("yugen-assets", "yugen-private-assets")
 R2_ENDPOINT = os.environ.get(
     "R2_ENDPOINT", "https://9d7bee7c1c5f0c0206e497f750384ae3.r2.cloudflarestorage.com"
 )
 GPU = os.environ.get("MODAL_GPU", "L40S")
+
+
+def bucket_for(private: bool) -> str:
+    """R2 bucket for a request: the private (PII) bucket if `private`, else public."""
+    return R2_PRIVATE_BUCKET if private else R2_BUCKET
 
 # Per-env Modal app name so prod/staging are separate deployments (don't clobber).
 APP_NAME = f"paddleocr-vl-{DEPLOY_ENV}"

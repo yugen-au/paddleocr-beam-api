@@ -13,7 +13,6 @@ from ocr.config import (
     APP_NAME,
     DEPLOY_ENV,
     GPU,
-    MOUNT_PATH,
     R2_BUCKET,
     R2_ENDPOINT,
     R2_SECRET_NAME,
@@ -71,17 +70,14 @@ model_cache = modal.Volume.from_name("paddleocr-models", create_if_missing=True)
 hf_cache = modal.Volume.from_name("paddleocr-hf-cache", create_if_missing=True)
 
 # R2 (S3-compatible). Secret must hold AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.
+# All R2 I/O goes through boto3 (ocr/artifacts.py), bucket chosen per-request, so
+# no CloudBucketMount — it's per-container (one fixed bucket) and can't set
+# Content-Type. This secret supplies the boto3 creds.
 r2_secret = modal.Secret.from_name(R2_SECRET_NAME)
-r2_mount = modal.CloudBucketMount(
-    bucket_name=R2_BUCKET,
-    bucket_endpoint_url=R2_ENDPOINT,  # required for R2
-    secret=r2_secret,
-)
 
-# Mounts attached to the service (path -> volume/mount).
+# Persistent model caches attached to the service (path -> volume).
 VOLUMES = {
     "/home/paddleocr/.paddlex/official_models": model_cache,
     "/home/paddleocr/.cache/huggingface": hf_cache,
-    MOUNT_PATH: r2_mount,
 }
 SECRETS = [r2_secret]

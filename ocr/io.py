@@ -12,7 +12,7 @@ import os
 import tempfile
 from typing import NamedTuple, Optional
 
-from ocr.config import MOUNT_PATH
+from ocr import artifacts
 
 
 class PreparedInput(NamedTuple):
@@ -51,12 +51,14 @@ def _resolve_ext(data: bytes, file_name: Optional[str] = None) -> str:
 
 
 def prepare_input_file(
-    image_data: Optional[str] = None, file_name: Optional[str] = None
+    image_data: Optional[str] = None, file_name: Optional[str] = None,
+    bucket: Optional[str] = None,
 ) -> PreparedInput:
-    """Prepare input from base64 data OR an R2 file upload.
+    """Prepare input from base64 data OR an R2 file (key=file_name) read via boto3
+    from `bucket` (defaults to the public bucket when None).
 
     Raises ValueError if neither/both are given, FileNotFoundError if the named
-    upload is missing.
+    R2 object can't be read.
     """
     if not image_data and not file_name:
         raise ValueError("Either image_data or file_name must be provided")
@@ -69,13 +71,13 @@ def prepare_input_file(
             image_data = image_data.split(",", 1)[1]
         data = base64.b64decode(image_data)
     else:
-        # R2 file upload: read the bytes from the mounted bucket.
+        # R2 file: fetch the object via boto3 from the resolved bucket. boto3 (not
+        # the mount) so the same request can target the private or public bucket.
         assert file_name is not None  # guaranteed by validation above
-        file_path = os.path.join(MOUNT_PATH, file_name)
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File not found in uploads: {file_name}")
-        with open(file_path, "rb") as f:
-            data = f.read()
+        try:
+            data = artifacts.get_bytes(file_name, bucket=bucket)
+        except Exception as e:
+            raise FileNotFoundError(f"Could not read input from R2 ({file_name}): {e}")
 
     # Type from content. Write a temp file named with the sniffed ext so predict()
     # always dispatches correctly regardless of the upload's filename.

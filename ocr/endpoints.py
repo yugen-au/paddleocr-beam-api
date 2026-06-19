@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import modal
 
 from ocr import artifacts
-from ocr.config import GPU, R2_BUCKET
+from ocr.config import GPU, R2_BUCKET, bucket_for
 from ocr.io import PreparedInput, prepare_input_file
 from ocr.metrics import calculate_character_metrics
 from ocr.pipeline import boot
@@ -28,20 +28,21 @@ def _session_id() -> str:
 def _persist_all(
     pipeline, prepared: PreparedInput, session_id: str,
     file_name: Optional[str], image_data: Optional[str], unwarp: bool = False,
+    bucket: Optional[str] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Run prediction, persist every artifact under the session prefix, write the
     manifest last. Returns (per-page summaries, r2 reference block)."""
     input_method = "base64" if image_data else "s3_upload"
-    original_key = artifacts.save_original(session_id, prepared.data, prepared.ext)
+    original_key = artifacts.save_original(session_id, prepared.data, prepared.ext, bucket=bucket)
 
     # use_doc_unwarping off unless the caller opts in -- the dewarp isn't
     # idempotent and bends edges even on flat docs (drive it from a skew check).
     output = pipeline.predict(prepared.path, use_doc_unwarping=unwarp)
-    pages = [artifacts.persist_page(session_id, i + 1, res) for i, res in enumerate(output)]
+    pages = [artifacts.persist_page(session_id, i + 1, res, bucket=bucket) for i, res in enumerate(output)]
 
-    artifacts.save_manifest(session_id, original_key, file_name, input_method, pages)
+    artifacts.save_manifest(session_id, original_key, file_name, input_method, pages, bucket=bucket)
     r2 = {
-        "bucket": R2_BUCKET,
+        "bucket": bucket or R2_BUCKET,
         "prefix": artifacts.session_prefix(session_id) + "/",
         "manifest_key": artifacts.manifest_key(session_id),
         "original_key": original_key,
@@ -57,14 +58,16 @@ def _extract_and_analyze(
     include_character_metrics: bool,
     include_layout_analysis: bool,
     unwarp: bool = False,
+    private: bool = False,
 ) -> Dict[str, Any]:
     try:
         session_id = _session_id()
-        prepared = prepare_input_file(image_data, file_name)
+        bucket = bucket_for(private)
+        prepared = prepare_input_file(image_data, file_name, bucket=bucket)
         try:
             print(f"Processing document with PaddleOCR-VL: {prepared.path}")
             pages, r2 = _persist_all(
-                pipeline, prepared, session_id, file_name, image_data, unwarp
+                pipeline, prepared, session_id, file_name, image_data, unwarp, bucket=bucket
             )
 
             results = []
@@ -115,15 +118,16 @@ def _extract_and_analyze(
 
 def _extract_simple(
     pipeline, image_data: Optional[str], file_name: Optional[str],
-    unwarp: bool = False,
+    unwarp: bool = False, private: bool = False,
 ) -> Dict[str, Any]:
     try:
         session_id = _session_id()
-        prepared = prepare_input_file(image_data, file_name)
+        bucket = bucket_for(private)
+        prepared = prepare_input_file(image_data, file_name, bucket=bucket)
         try:
             print(f"Processing document with PaddleOCR-VL (simple): {prepared.path}")
             pages, r2 = _persist_all(
-                pipeline, prepared, session_id, file_name, image_data, unwarp
+                pipeline, prepared, session_id, file_name, image_data, unwarp, bucket=bucket
             )
 
             full_text = "\n".join(p["text_content"] for p in pages if p["text_content"])
@@ -154,7 +158,8 @@ def _extract_simple(
 
 
 def _crop_and_section(
-    session_id: Optional[str], margin: int = 20, target_ar: Optional[float] = None
+    session_id: Optional[str], margin: int = 20, target_ar: Optional[float] = None,
+    private: bool = False,
 ) -> Dict[str, Any]:
     """Crop each page of a prior OCR session to its text bound and split it into
     N sections (N = round(AR/target_ar)), cuts snapped to whitespace gaps. Reads
@@ -170,17 +175,18 @@ def _crop_and_section(
 
         ta = float(target_ar) if target_ar else sectioning.SQRT2
         margin = int(margin)
-        manifest = artifacts.get_json(artifacts.manifest_key(session_id))
+        bucket = bucket_for(private)
+        manifest = artifacts.get_json(artifacts.manifest_key(session_id), bucket=bucket)
 
         pages_out = []
         for page in manifest.get("pages", []):
             prefix = page["prefix"]
-            raw = artifacts.get_json(page["raw_result_key"])
+            raw = artifacts.get_json(page["raw_result_key"], bucket=bucket)
             img_key = next((k for k in page.get("viz_keys", []) if "preprocessed_output" in k), None)
             if not img_key:
                 raise RuntimeError(f"no preprocessed_output for page {page.get('page')}")
 
-            img = Image.open(BytesIO(artifacts.get_bytes(img_key))).convert("RGB")
+            img = Image.open(BytesIO(artifacts.get_bytes(img_key, bucket=bucket))).convert("RGB")
             res = raw.get("res", raw)
             rw, rh = res.get("width"), res.get("height")
             W, H = img.size
@@ -189,8 +195,8 @@ def _crop_and_section(
             polys = sectioning.polygons_from_result(raw, sx, sy)
             crop, sections, info = sectioning.section_page(img, polys, margin, ta)
 
-            crop_key = artifacts.put_pil(f"{prefix}/crop.png", crop)
-            section_keys = [artifacts.put_pil(f"{prefix}/sections/section_{i:02d}.png", s)
+            crop_key = artifacts.put_pil(f"{prefix}/crop.png", crop, bucket=bucket)
+            section_keys = [artifacts.put_pil(f"{prefix}/sections/section_{i:02d}.png", s, bucket=bucket)
                             for i, s in enumerate(sections, 1)]
             pages_out.append({"page": page["page"], **info,
                               "crop_key": crop_key, "section_keys": section_keys})
@@ -198,7 +204,7 @@ def _crop_and_section(
         return {
             "success": True,
             "session_id": session_id,
-            "bucket": R2_BUCKET,
+            "bucket": bucket,
             "margin": margin,
             "target_ar": round(ta, 4),
             "pages": pages_out,
@@ -240,6 +246,7 @@ class OCRService:
                 body.get("include_character_metrics", True),
                 body.get("include_layout_analysis", True),
                 body.get("unwarp", False),
+                body.get("private", False),
             )
 
         @web_app.post("/extract_text_simple")
@@ -249,6 +256,7 @@ class OCRService:
                 body.get("image_data"),
                 body.get("file_name"),
                 body.get("unwarp", False),
+                body.get("private", False),
             )
 
         return web_app
@@ -274,6 +282,7 @@ class SectionService:
                 body.get("session_id"),
                 body.get("margin", 20),
                 body.get("target_ar"),
+                body.get("private", False),
             )
 
         return web_app
