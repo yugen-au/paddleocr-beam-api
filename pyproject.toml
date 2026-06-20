@@ -1,0 +1,30 @@
+[project]
+name = "paddleocr-beam-api"
+version = "0.1.0"
+description = "GPU-accelerated PaddleOCR-VL OCR API on Beam.cloud"
+requires-python = ">=3.11"
+
+# DEPLOY deps: the only thing needed locally to run `deploy.py` / `beam deploy`.
+# Container RUNTIME deps (paddlepaddle-gpu, paddleocr[doc-parser], fastdeploy)
+# are NOT here — they're built into the beam.Image in ocr/resources.py.
+dependencies = [
+    "modal",
+]
+
+[dependency-groups]
+# Local development only (IDE stubs + tooling). Installed by `uv sync`,
+# excluded by `uv sync --no-dev`.
+dev = [
+    # IDE type hints / autocomplete: installs paddleocr package files so editors
+    # resolve `from paddleocr import PaddleOCRVL`. Indexing only — not run locally.
+    # paddlepaddle-gpu (no Windows wheel) and fastdeploy (CLI-launched, never
+    # imported) are intentionally absent; the container builds those itself.
+    "paddleocr[doc-parser]",
+    "pyright>=1.1.410",
+    "pytest",
+    "ruff",
+]
+
+# This repo is an application, not a distributable package — don't try to build it.
+[tool.uv]
+package = false

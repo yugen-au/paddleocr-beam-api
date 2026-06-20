@@ -13,9 +13,23 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 ## Architecture
 
 - **Base**: Official PaddleOCR-VL Docker image
-- **Framework**: PaddlePaddle GPU with CUDA 12.6
-- **Deployment**: Beam.cloud with auto-scaling
-- **GPU**: RTX 4090 for cost-effective processing
+- **Framework**: PaddlePaddle GPU with CUDA 12.6 (paddleocr floated to latest)
+- **Inference**: FastDeploy accelerated backend — the 0.9B VLM runs as a sidecar
+  OpenAI-compatible server (`127.0.0.1:8118`); the pipeline delegates only the VLM
+  recognition stage to it over HTTP, keeping layout/orientation/unwarp in-process
+- **Deployment**: Beam.cloud with auto-scaling; sidecar started once per container via `on_start`
+- **GPU**: selectable per deploy via `BEAM_PROFILE` (cost=RTX4090 / latency=H100)
+
+### Code layout (`ocr/` package)
+| Module | Responsibility |
+|---|---|
+| `config.py` | Resource profile, VLM server + tuning constants |
+| `resources.py` | Beam image (FastDeploy deps), model/HF volumes, R2 bucket |
+| `vlm_server.py` | Launch FastDeploy sidecar subprocess, poll until healthy |
+| `pipeline.py` | `boot()` (Beam `on_start`): start sidecar + build pipeline client |
+| `storage.py` / `io.py` / `metrics.py` | R2 image saving / input prep / char metrics |
+| `endpoints.py` | The two `@beam.endpoint` functions |
+| `app.py` | Thin re-export so `beam deploy app.py:<fn>` is unchanged |
 
 ## API Endpoints
 
@@ -105,19 +119,30 @@ A GPU-accelerated OCR API built with PaddleOCR-VL and deployed on Beam.cloud for
 - Beam account with API token
 
 ### Deploy to Beam
-```bash
-# Clone the repository
-git clone https://github.com/yugen-au/paddleocr-beam-api.git
-cd paddleocr-beam-api
 
-# Deploy the endpoint
-beam deploy app.py:extract_text_and_analyze
+First set up the local env with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uv sync              # full dev env (.venv): beam-client + paddleocr stubs + pytest/ruff
+uv sync --no-dev     # deploy-only env (just beam-client)
 ```
 
-### Alternative: Deploy Simple Extraction
+Then deploy with the cross-platform `deploy.py` (it sets the deploy-time env —
+resource profile + non-secret R2 config — and invokes `beam deploy`, so you avoid
+bash-vs-PowerShell env syntax):
+
 ```bash
-beam deploy app.py:extract_text_simple
+uv run python deploy.py prod                   # both endpoints, cost profile (RTX4090)
+uv run python deploy.py staging                # staging bucket (edit ENVIRONMENTS first)
+uv run python deploy.py prod --profile latency # H100, fastest per-request
+uv run python deploy.py prod --endpoint analyze# just one endpoint
+uv run python deploy.py staging --dry-run      # print actions, deploy nothing
 ```
+
+Per-environment config (bucket, endpoint, profile, secret *names*) lives in
+`ENVIRONMENTS` at the top of `deploy.py`. Resource profiles are in `ocr/config.py`.
+Actual R2 credentials are stored in Beam's secret manager, not here (see
+[Configuration](#configuration)).
 
 ## Local Development
 
