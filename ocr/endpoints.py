@@ -7,6 +7,7 @@ result.json manifest written last as the commit marker) and return the keys
 alongside the inline extraction.
 """
 import os
+import threading
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -19,6 +20,14 @@ from ocr.io import PreparedInput, prepare_input_file
 from ocr.metrics import calculate_character_metrics
 from ocr.pipeline import boot
 from ocr.resources import SECRETS, VOLUMES, app, cpu_image, image
+
+# The PaddleX pipeline isn't thread-safe: concurrent predict() calls on the one
+# per-container pipeline corrupt its internal 'cv' worker (a buffer sized for one
+# image gets indexed with another's dims -> vector range_check crash). We keep
+# @modal.concurrent high so a burst lands on one warm container, and serialize
+# the predict here so it runs one-at-a-time. Module-level = per-container (each
+# container is its own process); only the inference is held, not the R2 I/O.
+_PREDICT_LOCK = threading.Lock()
 
 
 def _session_id() -> str:
@@ -37,7 +46,10 @@ def _persist_all(
 
     # use_doc_unwarping off unless the caller opts in -- the dewarp isn't
     # idempotent and bends edges even on flat docs (drive it from a skew check).
-    output = pipeline.predict(prepared.path, use_doc_unwarping=unwarp)
+    # Lock: predict() materializes (returns a list), so all CV inference happens
+    # inside this call -- serialize it to keep the shared pipeline thread-safe.
+    with _PREDICT_LOCK:
+        output = pipeline.predict(prepared.path, use_doc_unwarping=unwarp)
     pages = [artifacts.persist_page(session_id, i + 1, res, bucket=bucket) for i, res in enumerate(output)]
 
     artifacts.save_manifest(session_id, original_key, file_name, input_method, pages, bucket=bucket)
